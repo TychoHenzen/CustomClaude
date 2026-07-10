@@ -1,0 +1,75 @@
+# Section-level filter source of truth + assembly order.
+# Generator drops a component when config strictness < min-strictness,
+# or config domain not in domains (unless `all`),
+# or config backend not in backends (unless `all`).
+# Components are concatenated in the order listed below.
+
+assembly_order:
+  - id: identity
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: prime-directives
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: communication
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: reading-before-acting
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: code-quality
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: observability
+    min-strictness: full
+    domains: [web, ml, cli, data, generic, game]
+    backends: all
+  - id: game-dev
+    min-strictness: lean
+    domains: [game]
+    backends: all
+  - id: completion-protocol
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: ownership
+    min-strictness: full
+    domains: all
+    backends: all
+  - id: code-review-gates
+    min-strictness: full
+    domains: all
+    backends: all
+  - id: context-management
+    min-strictness: full
+    domains: all
+    backends: all
+  - id: scope-orchestration-routing
+    min-strictness: full
+    domains: all
+    backends: all
+  - id: security
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: tool-routing
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: destructive-actions
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: git
+    min-strictness: lean
+    domains: all
+    backends: all
+  - id: what-you-are-not
+    min-strictness: full
+    domains: all
+    backends: all

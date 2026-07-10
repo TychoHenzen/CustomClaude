@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "name": "python-web-full-claude (baseline ceremony + language swap)",
+      "config": {"language": "python", "domain": "web", "strictness": "full", "backend": "claude", "layers": {}},
+      "must_contain": ["Write test first", "grep changed files for stubs", "AUDIT:", "pytest"],
+      "must_exclude": ["cargo", "DeepSeek tool-call scaffolding"]
+    },
+    {
+      "name": "rust-cli-lean-claude (strictness strips ceremony + language swap)",
+      "config": {"language": "rust", "domain": "cli", "strictness": "lean", "backend": "claude", "layers": {}},
+      "must_contain": ["cargo"],
+      "must_exclude": ["AUDIT:", "pytest", "Write test first"]
+    },
+    {
+      "name": "python-web-full-deepseek (backend conditional ON)",
+      "config": {"language": "python", "domain": "web", "strictness": "full", "backend": "deepseek", "layers": {}},
+      "must_contain": ["DeepSeek tool-call scaffolding", "pytest"],
+      "must_exclude": ["cargo"]
+    },
+    {
+      "name": "python-web-full-claude (backend conditional OFF)",
+      "config": {"language": "python", "domain": "web", "strictness": "full", "backend": "claude", "layers": {}},
+      "must_contain": ["pytest"],
+      "must_exclude": ["DeepSeek tool-call scaffolding"]
+    },
+    {
+      "name": "python-web-full-claude liedetector-on (layer toggle strips no-emoji)",
+      "config": {"language": "python", "domain": "web", "strictness": "full", "backend": "claude", "layers": {"liedetector": true}},
+      "must_contain": ["pytest"],
+      "must_exclude": ["No emoji"]
+    },
+    {
+      "name": "rust-game-full-deepseek all-layers (game component + deepseek + liedetector affirm)",
+      "config": {"language": "rust", "domain": "game", "strictness": "full", "backend": "deepseek", "layers": {"caveman": true, "liedetector": true, "rtk": true, "context-mode": true}},
+      "must_contain": ["## Game Development", "Frame budget", "Determinism", "DeepSeek tool-call scaffolding", "cargo", "🟢"],
+      "must_exclude": ["No emoji", "pytest"]
+    }
+  ]
+}

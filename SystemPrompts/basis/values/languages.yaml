@@ -1,0 +1,46 @@
+# Language value table — holds resolved values for the LANG placeholder tokens.
+# Key -> token mapping is documented in GRAMMAR.md.
+# Keys per language: test_cmd, build_cmd, lint_cmd, stub_keywords,
+#   fn_line_limit, file_line_limit.
+# Extensible: add a new top-level block with all six keys.
+
+python:
+  test_cmd: pytest
+  build_cmd: python -m py_compile .
+  lint_cmd: ruff check .
+  stub_keywords: pass, raise NotImplementedError, ..., # TODO, # FIXME
+  fn_line_limit: 50
+  file_line_limit: 800
+
+rust:
+  test_cmd: cargo test
+  build_cmd: cargo build
+  lint_cmd: cargo clippy -- -D warnings
+  stub_keywords: todo!(), unimplemented!(), panic!("not implemented"), // TODO, // FIXME
+  fn_line_limit: 50
+  file_line_limit: 800
+
+typescript:
+  test_cmd: npm test
+  build_cmd: tsc --noEmit
+  lint_cmd: eslint .
+  stub_keywords: throw new Error("not implemented"), // TODO, // FIXME, // @ts-ignore
+  fn_line_limit: 50
+  file_line_limit: 800
+
+go:
+  test_cmd: go test ./...
+  build_cmd: go build ./...
+  lint_cmd: go vet ./...
+  stub_keywords: panic("not implemented"), // TODO, // FIXME
+  fn_line_limit: 50
+  file_line_limit: 800
+
+# AudioEvolve: Python primary (audio analysis), C# WPF for UI.
+csharp-python:
+  test_cmd: pytest; dotnet test
+  build_cmd: python -m py_compile . ; dotnet build
+  lint_cmd: ruff check . ; dotnet format --verify-no-changes
+  stub_keywords: pass, raise NotImplementedError, ..., # TODO, # FIXME, throw new NotImplementedException(), // TODO
+  fn_line_limit: 50
+  file_line_limit: 800

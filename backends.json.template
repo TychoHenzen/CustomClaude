@@ -1,0 +1,32 @@
+{
+  "default": "anthropic",
+  "backends": {
+    "anthropic": {
+      "label": "Anthropic Native",
+      "description": "Direct to Anthropic API. Uses your ANTHROPIC_API_KEY env var or claude login."
+    },
+    "deepseek-home": {
+      "label": "DeepSeek (home proxy)",
+      "description": "Routes through local deepclaude proxy.",
+      "apiKey": "YOUR_DEEPSEEK_API_KEY_HERE",
+      "clearEnv": ["ANTHROPIC_API_KEY"],
+      "proxy": {
+        "dir": "~/deepclaude",
+        "command": "proxy/start-proxy.js --mode deepseek --quiet",
+        "healthUrl": "http://127.0.0.1:3200/_proxy/status",
+        "healthKey": "mode",
+        "healthValue": "deepseek"
+      },
+      "env": {
+        "ANTHROPIC_BASE_URL": "http://127.0.0.1:3200",
+        "ANTHROPIC_MODEL": "deepseek-v4-pro[1m]",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro[1m]",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-pro[1m]",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-flash[1m]",
+        "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4-flash[1m]",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_EFFORT_LEVEL": "max"
+      }
+    }
+  }
+}

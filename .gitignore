@@ -1,0 +1,12 @@
+# Secrets
+backends.json
+
+# Editor
+*.swp
+*~
+.vscode/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
