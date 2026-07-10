@@ -182,9 +182,9 @@ if (-not (Test-Path "$TweakccCloneDir\data\prompts")) {
         Remove-Item $TweakccCloneDir -Recurse -Force -ErrorAction SilentlyContinue
     }
     Write-Host "  Cloning tweakcc-fixed..." -ForegroundColor DarkGray
-    & git clone --depth 1 "https://github.com/skrabe/tweakcc-fixed.git" $TweakccCloneDir 2>&1 | Out-Null
+    & git clone --depth 1 --quiet "https://github.com/skrabe/tweakcc-fixed.git" $TweakccCloneDir
 } else {
-    & git -C $TweakccCloneDir pull --quiet 2>$null | Out-Null
+    & git -C $TweakccCloneDir pull --quiet
 }
 
 $tweakccVersions = Get-ChildItem "$TweakccCloneDir\data\prompts" -Filter "prompts-*.json" -ErrorAction SilentlyContinue |
@@ -405,7 +405,7 @@ function Initialize-TweakccPresets {
     }
 
     Write-Host "  Cloning lukehutch/unnerfcc..." -ForegroundColor DarkGray
-    & git clone --depth 1 "https://github.com/lukehutch/unnerfcc.git" "$PresetsDir\_unnerfcc-repo" 2>&1 | Out-Null
+    & git clone --depth 1 --quiet "https://github.com/lukehutch/unnerfcc.git" "$PresetsDir\_unnerfcc-repo"
     if ($LASTEXITCODE -eq 0) {
         Get-ChildItem "$PresetsDir\_unnerfcc-repo\system-prompts" -Filter "*.md" -ErrorAction SilentlyContinue |
             Copy-Item -Destination "$PresetsDir\unnerfcc\system-prompts\" -Force
@@ -413,7 +413,7 @@ function Initialize-TweakccPresets {
     } else { Write-Host "  WARNING: Failed to clone unnerfcc" -ForegroundColor Yellow }
 
     Write-Host "  Cloning skrabe/lobotomized-claude-code..." -ForegroundColor DarkGray
-    & git clone --depth 1 "https://github.com/skrabe/lobotomized-claude-code.git" "$PresetsDir\_lobotomized-repo" 2>&1 | Out-Null
+    & git clone --depth 1 --quiet "https://github.com/skrabe/lobotomized-claude-code.git" "$PresetsDir\_lobotomized-repo"
     if ($LASTEXITCODE -eq 0) {
         $loboPromptsDir = "$PresetsDir\_lobotomized-repo\system-prompts-opus-4-8"
         if (Test-Path $loboPromptsDir) {
