@@ -31,8 +31,8 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $ClaudeExe = Join-Path $env:USERPROFILE ".local\bin\claude.exe"
 $TweakccDir = Join-Path $env:USERPROFILE ".tweakcc"
 $TweakccCfg = Join-Path $TweakccDir "config.json"
-$TweakccCloneDir = Join-Path $env:LOCALAPPDATA "tweakcc-fixed"
-$PresetsDir = Join-Path $env:USERPROFILE ".claude\tweakcc-presets"
+$TweakccCloneDir = Join-Path $ScriptDir ".cache\tweakcc-fixed"
+$PresetsDir = Join-Path $ScriptDir "tweakcc-presets"
 $PromptsDir = Join-Path $ScriptDir "SystemPrompts"
 $BackendsCfg = Join-Path $env:USERPROFILE ".claude\backends.json"
 $ghHeaders = @{'Accept'='application/vnd.github+json'; 'User-Agent'='customclaude'}

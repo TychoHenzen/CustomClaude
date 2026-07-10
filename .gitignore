@@ -1,6 +1,10 @@
 # Secrets
 backends.json
 
+# Generated / cloned at runtime
+.cache/
+tweakcc-presets/
+
 # Editor
 *.swp
 *~
