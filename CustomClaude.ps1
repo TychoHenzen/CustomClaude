@@ -27,13 +27,13 @@ $env:CLAUDE_CODE_SKIP_AUTO_UPDATE = "1"
 
 # -- Paths (resolved ONCE, never recomputed) ----------------------------------
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$RepoDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $ClaudeExe = Join-Path $env:USERPROFILE ".local\bin\claude.exe"
 $TweakccDir = Join-Path $env:USERPROFILE ".tweakcc"
 $TweakccCfg = Join-Path $TweakccDir "config.json"
-$TweakccCloneDir = Join-Path $ScriptDir ".cache\tweakcc-fixed"
-$PresetsDir = Join-Path $ScriptDir "tweakcc-presets"
-$PromptsDir = Join-Path $ScriptDir "SystemPrompts"
+$TweakccCloneDir = Join-Path $RepoDir ".cache\tweakcc-fixed"
+$PresetsDir = Join-Path $RepoDir "tweakcc-presets"
+$PromptsDir = Join-Path $RepoDir "SystemPrompts"
 $BackendsCfg = Join-Path $env:USERPROFILE ".claude\backends.json"
 $ghHeaders = @{'Accept'='application/vnd.github+json'; 'User-Agent'='customclaude'}
 
@@ -177,6 +177,10 @@ Write-Host "  CC version: $currentVer" -ForegroundColor DarkGray
 # -- Pull tweakcc-fixed for version data --------------------------------------
 
 if (-not (Test-Path "$TweakccCloneDir\data\prompts")) {
+    # Partial/broken clone blocks git clone; remove it first
+    if (Test-Path $TweakccCloneDir) {
+        Remove-Item $TweakccCloneDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
     Write-Host "  Cloning tweakcc-fixed..." -ForegroundColor DarkGray
     & git clone --depth 1 "https://github.com/skrabe/tweakcc-fixed.git" $TweakccCloneDir 2>&1 | Out-Null
 } else {

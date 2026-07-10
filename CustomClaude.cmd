@@ -1,11 +1,11 @@
 @echo off
-REM Thin shim: pulls latest from repo, then runs the real script.
-REM Deploy this file to %USERPROFILE%\bin\CustomClaude.cmd
+REM Self-contained shim: keeps a clone of the repo next to itself, runs from it.
+set "REPO=%~dp0CustomClaude"
 
-set "REPO_DIR=C:\Development\Projects\customclaude"
+if exist "%REPO%\.git" (
+    git -C "%REPO%" pull --quiet 2>nul
+) else (
+    git clone --quiet https://github.com/TychoHenzen/CustomClaude.git "%REPO%"
+)
 
-REM Pull latest (quiet, non-fatal)
-git -C "%REPO_DIR%" pull --quiet 2>nul
-
-REM Run the real script from the repo
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\CustomClaude.ps1" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REPO%\CustomClaude.ps1" %*
