@@ -1,13 +1,17 @@
 {
-  "default": "anthropic",
+  "default": "deepseek-home",
   "backends": {
-    "anthropic": {
-      "label": "Anthropic Native",
-      "description": "Direct to Anthropic API. Uses your ANTHROPIC_API_KEY env var or claude login."
+    "winidows": {
+      "label": "Anthropic (Windows)",
+      "description": "Direct to Anthropic on Windows. Uses stored OAuth login."
+    },
+    "wsl": {
+      "label": "Anthropic (WSL)",
+      "description": "Direct to Anthropic API via WSL. Uses stored OAuth login."
     },
     "deepseek-home": {
       "label": "DeepSeek (home proxy)",
-      "description": "Routes through local deepclaude proxy.",
+      "description": "Routes through local deepclaude proxy. DeepSeek v4-pro for main, v4-flash for subagents.",
       "apiKey": "YOUR_DEEPSEEK_API_KEY_HERE",
       "clearEnv": ["ANTHROPIC_API_KEY"],
       "proxy": {
