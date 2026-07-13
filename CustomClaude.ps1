@@ -11,14 +11,17 @@
     CustomClaude rme-strict -DeepSeek   # direct + DeepSeek
     CustomClaude -DeepSeek              # interactive + DeepSeek on
     CustomClaude -ForceTweakcc          # kill all CC, force re-apply tweakcc
+    CustomClaude -q                      # quick: auto-accept all 4 steps from last config
 #>
 
 param(
     [string]$PromptName,
     [switch]$DeepSeek,
     [string]$Backend,
-    [switch]$ForceTweakcc
+    [switch]$ForceTweakcc,
+    [switch]$q
 )
+$nonInteractive = $PromptName -or $q
 
 $ErrorActionPreference = "Stop"
 
@@ -218,7 +221,7 @@ if ($intersectVersions.Count -eq 0) {
 $lastVersionFile = Join-Path $env:TEMP "customclaude-last-version.txt"
 $lastVersion = if (Test-Path $lastVersionFile) { (Get-Content $lastVersionFile -Raw).Trim() } else { "" }
 
-if ($PromptName) {
+if ($nonInteractive) {
     # Non-interactive: use last version if valid, else latest
     if ($lastVersion -and $lastVersion -in $intersectVersions) {
         $targetVer = $lastVersion
@@ -494,7 +497,7 @@ function Apply-TweakccPreset {
 
 # -- Preset selection ---------------------------------------------------------
 
-if ($PromptName) {
+if ($nonInteractive) {
     $chosenPreset = $lastPreset
     Write-Host ""
     Write-Host "  Tweakcc Preset: $chosenPreset (last used)" -ForegroundColor DarkGray
@@ -587,6 +590,8 @@ if ($args.Count -gt 0) {
 }
 
 $chosen = $null
+$lastPromptFile = Join-Path $env:TEMP "customclaude-last-prompt.txt"
+$lastPrompt = if (Test-Path $lastPromptFile) { (Get-Content $lastPromptFile -Raw).Trim() } else { "" }
 
 if ($PromptName) {
     $match = $files | Where-Object { $_.BaseName -like "*$PromptName*" }
@@ -601,16 +606,34 @@ if ($PromptName) {
         exit 1
     }
     $chosen = $match[0]
+} elseif ($nonInteractive) {
+    # -q without -PromptName: use last prompt
+    if ($lastPrompt) {
+        $match = $files | Where-Object { $_.BaseName -eq $lastPrompt }
+        if ($match) { $chosen = $match }
+    }
+    if ($chosen) {
+        Write-Host "  Prompt: $($chosen.BaseName) (last used)" -ForegroundColor DarkGray
+    } else {
+        Write-Host "  Prompt: default (no last prompt)" -ForegroundColor DarkGray
+    }
 } else {
     Write-Host ""
     Write-Host "  System Prompts" -ForegroundColor Cyan
     Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
+    $defaultPromptIdx = -1
+    if ($lastPrompt) {
+        for ($i = 0; $i -lt $files.Count; $i++) {
+            if ($files[$i].BaseName -eq $lastPrompt) { $defaultPromptIdx = $i; break }
+        }
+    }
     for ($i = 0; $i -lt $files.Count; $i++) {
         $f = $files[$i]
         $sizeKB = [math]::Round($f.Length / 1024, 1)
         $firstLine = (Get-Content $f.FullName -TotalCount 1) -replace '^#\s*', ''
+        $mark = if ($i -eq $defaultPromptIdx) { " (last)" } else { "" }
         Write-Host "  [$($i + 1)] " -NoNewline -ForegroundColor Green
-        Write-Host "$($f.BaseName)" -NoNewline -ForegroundColor White
+        Write-Host "$($f.BaseName)$mark" -NoNewline -ForegroundColor White
         Write-Host " (${sizeKB}KB)" -NoNewline -ForegroundColor DarkGray
         if ($firstLine) { Write-Host " - $firstLine" -ForegroundColor DarkGray } else { Write-Host "" }
     }
@@ -618,7 +641,9 @@ if ($PromptName) {
     Write-Host "Default (no custom prompt)" -ForegroundColor DarkGray
     Write-Host ""
 
-    $selection = Read-Host "  Pick"
+    $defaultNum = if ($defaultPromptIdx -ge 0) { $defaultPromptIdx + 1 } else { "0" }
+    $selection = Read-Host "  Pick [$defaultNum]"
+    if ($selection -eq "") { $selection = $defaultNum }
     if ($selection -ne "0" -and $selection -ne "") {
         $idx = [int]$selection - 1
         if ($idx -lt 0 -or $idx -ge $files.Count) {
@@ -627,6 +652,13 @@ if ($PromptName) {
         }
         $chosen = $files[$idx]
     }
+}
+
+# Persist last prompt selection
+if ($chosen) {
+    $chosen.BaseName | Out-File -FilePath $lastPromptFile -NoNewline
+} elseif ($selection -eq "0") {
+    Remove-Item $lastPromptFile -ErrorAction SilentlyContinue
 }
 
 # =============================================================================
@@ -652,7 +684,7 @@ if ($Backend) {
     $chosenBackend = if ($dsKey) { $dsKey } else { "deepseek-home" }
 }
 
-if ($PromptName) {
+if ($nonInteractive) {
     # Non-interactive: use last backend or default
     if (-not $chosenBackend) {
         $chosenBackend = if ($lastBackend -and $lastBackend -in $backendKeys) { $lastBackend } else { $backendCfg.default }
