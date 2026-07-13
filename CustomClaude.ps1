@@ -162,6 +162,58 @@ function ConvertTo-WslPath {
     return '/mnt/' + $drive + $WinPath.Substring(2).Replace('\', '/')
 }
 
+# -- Quick-launch: skip version/patch/tweakcc, just load last config and go ---
+
+if ($q) {
+    $backendCfg = Load-BackendConfig
+    $backendKeys = @($backendCfg.backends.PSObject.Properties.Name)
+    $lastBackendFile = Join-Path $env:TEMP "customclaude-last-backend.txt"
+    $lastBackend = if (Test-Path $lastBackendFile) { (Get-Content $lastBackendFile -Raw).Trim() } else { $backendCfg.default }
+    $chosenBackend = if ($lastBackend -and $lastBackend -in $backendKeys) { $lastBackend } else { $backendCfg.default }
+    $chosenBackend | Out-File -FilePath $lastBackendFile -NoNewline
+    $backendCfg = $backendCfg.backends.$chosenBackend
+
+    $chosen = $null
+    $lastPromptFile = Join-Path $env:TEMP "customclaude-last-prompt.txt"
+    $lastPrompt = if (Test-Path $lastPromptFile) { (Get-Content $lastPromptFile -Raw).Trim() } else { "" }
+    if ($lastPrompt -and (Test-Path $PromptsDir)) {
+        $files = Get-ChildItem -Path $PromptsDir -File -Filter "*.md" | Sort-Object Name
+        $match = $files | Where-Object { $_.BaseName -eq $lastPrompt }
+        if ($match) { $chosen = $match }
+    }
+
+    $proxyResult = Start-BackendProxy -backendCfg $backendCfg
+    Apply-BackendEnv -backendCfg $backendCfg
+
+    Write-Host "  Prompt:  " -NoNewline -ForegroundColor DarkGray
+    if ($chosen) { Write-Host "$($chosen.BaseName)" -ForegroundColor Cyan } else { Write-Host "default" -ForegroundColor DarkGray }
+    Write-Host "  Backend: " -NoNewline -ForegroundColor DarkGray
+    Write-Host "$($backendCfg.label)" -ForegroundColor Magenta
+    Write-Host ""
+
+    $extraArgsStr = ""
+    if ($args.Count -gt 0) {
+        $extraArgsStr = " " + (($args | ForEach-Object {
+            if ($_ -match '[\s"]') { "`"$($_ -replace '"', '\`"')`"" } else { $_ }
+        }) -join " ")
+    }
+    if ($backendCfg.wsl) {
+        if ($chosen) {
+            & wsl bash -c "claude --system-prompt-file `"$(ConvertTo-WslPath $chosen.FullName)`"$extraArgsStr"
+        } else {
+            & wsl bash -c "claude$extraArgsStr"
+        }
+    } elseif ($chosen) {
+        & "$env:ComSpec" /c "claude --system-prompt-file `"$($chosen.FullName)`"$extraArgsStr"
+    } else {
+        & "$env:ComSpec" /c "claude$extraArgsStr"
+    }
+    if ($proxyResult.process) {
+        try { $proxyResult.process.Kill() } catch {}
+    }
+    exit $LASTEXITCODE
+}
+
 # -- Determine current version ------------------------------------------------
 
 $currentVer = Get-ClaudeVersion
@@ -212,15 +264,7 @@ if ($intersectVersions.Count -eq 0) {
 $lastVersionFile = Join-Path $env:TEMP "customclaude-last-version.txt"
 $lastVersion = if (Test-Path $lastVersionFile) { (Get-Content $lastVersionFile -Raw).Trim() } else { "" }
 
-if ($q) {
-    # Non-interactive: use last version if valid, else latest
-    if ($lastVersion -and $lastVersion -in $intersectVersions) {
-        $targetVer = $lastVersion
-    } else {
-        $targetVer = $intersectVersions[0]
-    }
-    Write-Host "  Target: $targetVer (last used)" -ForegroundColor DarkGray
-} elseif ($intersectVersions.Count -eq 1) {
+if ($intersectVersions.Count -eq 1) {
     $targetVer = $intersectVersions[0]
     Write-Host "  Target: $targetVer (only available)" -ForegroundColor DarkGray
 } else {
@@ -488,45 +532,39 @@ function Apply-TweakccPreset {
 
 # -- Preset selection ---------------------------------------------------------
 
-if ($q) {
-    $chosenPreset = $lastPreset
-    Write-Host ""
-    Write-Host "  Tweakcc Preset: $chosenPreset (last used)" -ForegroundColor DarkGray
-} else {
-    Initialize-TweakccPresets
-    Write-Host ""
-    Write-Host "  Tweakcc Preset" -ForegroundColor Cyan
-    Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
+Initialize-TweakccPresets
+Write-Host ""
+Write-Host "  Tweakcc Preset" -ForegroundColor Cyan
+Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
 
-    $lastIdx = $presetNames.IndexOf($lastPreset)
-    if ($lastIdx -lt 0) { $lastIdx = 0 }
-    for ($i = 0; $i -lt $presetNames.Count; $i++) {
-        $mark = if ($presetNames[$i] -eq $lastPreset) { " (last)" } else { "" }
-        Write-Host "  [$($i + 1)] " -NoNewline -ForegroundColor Green
-        Write-Host "$($presetLabels[$i])$mark" -ForegroundColor White
-    }
-    Write-Host "  [f] " -NoNewline -ForegroundColor Yellow
-    Write-Host "Force re-apply (skip 'already applied' check)" -ForegroundColor DarkGray
-    Write-Host ""
-
-    $defaultNum = $lastIdx + 1
-    $choice = Read-Host "  Pick preset [$defaultNum]"
-    if ($choice -eq "") { $choice = $defaultNum }
-
-    if ($choice -match '^[Ff]$') {
-        $presetIdx = $lastIdx; $forceApply = $true
-        Write-Host "  Force re-applying '$($presetNames[$presetIdx])'..." -ForegroundColor Yellow
-    } elseif ($choice -match '^(\d+)[Ff]$') {
-        $presetIdx = [int]$Matches[1] - 1; $forceApply = $true
-    } else {
-        $presetIdx = [int]$choice - 1
-    }
-    if ($presetIdx -lt 0 -or $presetIdx -ge $presetNames.Count) {
-        Write-Host "  Invalid selection, defaulting to stock." -ForegroundColor Yellow
-        $presetIdx = 0
-    }
-    $chosenPreset = $presetNames[$presetIdx]
+$lastIdx = $presetNames.IndexOf($lastPreset)
+if ($lastIdx -lt 0) { $lastIdx = 0 }
+for ($i = 0; $i -lt $presetNames.Count; $i++) {
+    $mark = if ($presetNames[$i] -eq $lastPreset) { " (last)" } else { "" }
+    Write-Host "  [$($i + 1)] " -NoNewline -ForegroundColor Green
+    Write-Host "$($presetLabels[$i])$mark" -ForegroundColor White
 }
+Write-Host "  [f] " -NoNewline -ForegroundColor Yellow
+Write-Host "Force re-apply (skip 'already applied' check)" -ForegroundColor DarkGray
+Write-Host ""
+
+$defaultNum = $lastIdx + 1
+$choice = Read-Host "  Pick preset [$defaultNum]"
+if ($choice -eq "") { $choice = $defaultNum }
+
+if ($choice -match '^[Ff]$') {
+    $presetIdx = $lastIdx; $forceApply = $true
+    Write-Host "  Force re-applying '$($presetNames[$presetIdx])'..." -ForegroundColor Yellow
+} elseif ($choice -match '^(\d+)[Ff]$') {
+    $presetIdx = [int]$Matches[1] - 1; $forceApply = $true
+} else {
+    $presetIdx = [int]$choice - 1
+}
+if ($presetIdx -lt 0 -or $presetIdx -ge $presetNames.Count) {
+    Write-Host "  Invalid selection, defaulting to stock." -ForegroundColor Yellow
+    $presetIdx = 0
+}
+$chosenPreset = $presetNames[$presetIdx]
 
 $chosenPreset | Out-File -FilePath $lastPresetFile -NoNewline
 
@@ -584,51 +622,39 @@ $chosen = $null
 $lastPromptFile = Join-Path $env:TEMP "customclaude-last-prompt.txt"
 $lastPrompt = if (Test-Path $lastPromptFile) { (Get-Content $lastPromptFile -Raw).Trim() } else { "" }
 
-if ($q) {
-    if ($lastPrompt) {
-        $match = $files | Where-Object { $_.BaseName -eq $lastPrompt }
-        if ($match) { $chosen = $match }
-    }
-    if ($chosen) {
-        Write-Host "  Prompt: $($chosen.BaseName) (last used)" -ForegroundColor DarkGray
-    } else {
-        Write-Host "  Prompt: default (no last prompt)" -ForegroundColor DarkGray
-    }
-} else {
-    Write-Host ""
-    Write-Host "  System Prompts" -ForegroundColor Cyan
-    Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
-    $defaultPromptIdx = -1
-    if ($lastPrompt) {
-        for ($i = 0; $i -lt $files.Count; $i++) {
-            if ($files[$i].BaseName -eq $lastPrompt) { $defaultPromptIdx = $i; break }
-        }
-    }
+Write-Host ""
+Write-Host "  System Prompts" -ForegroundColor Cyan
+Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
+$defaultPromptIdx = -1
+if ($lastPrompt) {
     for ($i = 0; $i -lt $files.Count; $i++) {
-        $f = $files[$i]
-        $sizeKB = [math]::Round($f.Length / 1024, 1)
-        $firstLine = (Get-Content $f.FullName -TotalCount 1) -replace '^#\s*', ''
-        $mark = if ($i -eq $defaultPromptIdx) { " (last)" } else { "" }
-        Write-Host "  [$($i + 1)] " -NoNewline -ForegroundColor Green
-        Write-Host "$($f.BaseName)$mark" -NoNewline -ForegroundColor White
-        Write-Host " (${sizeKB}KB)" -NoNewline -ForegroundColor DarkGray
-        if ($firstLine) { Write-Host " - $firstLine" -ForegroundColor DarkGray } else { Write-Host "" }
+        if ($files[$i].BaseName -eq $lastPrompt) { $defaultPromptIdx = $i; break }
     }
-    Write-Host "  [0] " -NoNewline -ForegroundColor Yellow
-    Write-Host "Default (no custom prompt)" -ForegroundColor DarkGray
-    Write-Host ""
+}
+for ($i = 0; $i -lt $files.Count; $i++) {
+    $f = $files[$i]
+    $sizeKB = [math]::Round($f.Length / 1024, 1)
+    $firstLine = (Get-Content $f.FullName -TotalCount 1) -replace '^#\s*', ''
+    $mark = if ($i -eq $defaultPromptIdx) { " (last)" } else { "" }
+    Write-Host "  [$($i + 1)] " -NoNewline -ForegroundColor Green
+    Write-Host "$($f.BaseName)$mark" -NoNewline -ForegroundColor White
+    Write-Host " (${sizeKB}KB)" -NoNewline -ForegroundColor DarkGray
+    if ($firstLine) { Write-Host " - $firstLine" -ForegroundColor DarkGray } else { Write-Host "" }
+}
+Write-Host "  [0] " -NoNewline -ForegroundColor Yellow
+Write-Host "Default (no custom prompt)" -ForegroundColor DarkGray
+Write-Host ""
 
-    $defaultNum = if ($defaultPromptIdx -ge 0) { $defaultPromptIdx + 1 } else { "0" }
-    $selection = Read-Host "  Pick [$defaultNum]"
-    if ($selection -eq "") { $selection = $defaultNum }
-    if ($selection -ne "0" -and $selection -ne "") {
-        $idx = [int]$selection - 1
-        if ($idx -lt 0 -or $idx -ge $files.Count) {
-            Write-Host "Invalid selection." -ForegroundColor Red
-            exit 1
-        }
-        $chosen = $files[$idx]
+$defaultNum = if ($defaultPromptIdx -ge 0) { $defaultPromptIdx + 1 } else { "0" }
+$selection = Read-Host "  Pick [$defaultNum]"
+if ($selection -eq "") { $selection = $defaultNum }
+if ($selection -ne "0" -and $selection -ne "") {
+    $idx = [int]$selection - 1
+    if ($idx -lt 0 -or $idx -ge $files.Count) {
+        Write-Host "Invalid selection." -ForegroundColor Red
+        exit 1
     }
+    $chosen = $files[$idx]
 }
 
 # Persist last prompt selection
@@ -647,44 +673,33 @@ $backendKeys = @($backendCfg.backends.PSObject.Properties.Name)
 $lastBackendFile = Join-Path $env:TEMP "customclaude-last-backend.txt"
 $lastBackend = if (Test-Path $lastBackendFile) { (Get-Content $lastBackendFile -Raw).Trim() } else { $backendCfg.default }
 
-# Resolve backend: last used > config default
-$chosenBackend = $null
+# Resolve backend
 
-if ($q) {
-    # Non-interactive: use last backend or default
-    if (-not $chosenBackend) {
-        $chosenBackend = if ($lastBackend -and $lastBackend -in $backendKeys) { $lastBackend } else { $backendCfg.default }
-    }
-    Write-Host "  Backend: $chosenBackend (last used)" -ForegroundColor DarkGray
-} else {
-    if (-not $chosenBackend) {
-        Write-Host ""
-        Write-Host "  Backend" -ForegroundColor Cyan
-        Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
-        $lastIdx = [array]::IndexOf($backendKeys, $lastBackend)
-        if ($lastIdx -lt 0) { $lastIdx = [array]::IndexOf($backendKeys, $backendCfg.default) }
-        if ($lastIdx -lt 0) { $lastIdx = 0 }
-        for ($i = 0; $i -lt $backendKeys.Count; $i++) {
-            $k = $backendKeys[$i]
-            $b = $backendCfg.backends.$k
-            $mark = if ($k -eq $lastBackend) { " (last)" } else { "" }
-            Write-Host "  [$($i + 1)] " -NoNewline -ForegroundColor Green
-            Write-Host "$($b.label)$mark" -ForegroundColor White
-            if ($b.description) { Write-Host "      $($b.description)" -ForegroundColor DarkGray }
-        }
-        Write-Host ""
-        $defaultNum = $lastIdx + 1
-        $bkChoice = Read-Host "  Pick backend [$defaultNum]"
-        if ($bkChoice -eq "") { $bkChoice = $defaultNum }
-        $bkIdx = [int]$bkChoice - 1
-        if ($bkIdx -lt 0 -or $bkIdx -ge $backendKeys.Count) {
-            Write-Host "  Invalid, using default." -ForegroundColor Yellow
-            $bkIdx = [array]::IndexOf($backendKeys, $backendCfg.default)
-            if ($bkIdx -lt 0) { $bkIdx = 0 }
-        }
-        $chosenBackend = $backendKeys[$bkIdx]
-    }
+Write-Host ""
+Write-Host "  Backend" -ForegroundColor Cyan
+Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
+$lastIdx = [array]::IndexOf($backendKeys, $lastBackend)
+if ($lastIdx -lt 0) { $lastIdx = [array]::IndexOf($backendKeys, $backendCfg.default) }
+if ($lastIdx -lt 0) { $lastIdx = 0 }
+for ($i = 0; $i -lt $backendKeys.Count; $i++) {
+    $k = $backendKeys[$i]
+    $b = $backendCfg.backends.$k
+    $mark = if ($k -eq $lastBackend) { " (last)" } else { "" }
+    Write-Host "  [$($i + 1)] " -NoNewline -ForegroundColor Green
+    Write-Host "$($b.label)$mark" -ForegroundColor White
+    if ($b.description) { Write-Host "      $($b.description)" -ForegroundColor DarkGray }
 }
+Write-Host ""
+$defaultNum = $lastIdx + 1
+$bkChoice = Read-Host "  Pick backend [$defaultNum]"
+if ($bkChoice -eq "") { $bkChoice = $defaultNum }
+$bkIdx = [int]$bkChoice - 1
+if ($bkIdx -lt 0 -or $bkIdx -ge $backendKeys.Count) {
+    Write-Host "  Invalid, using default." -ForegroundColor Yellow
+    $bkIdx = [array]::IndexOf($backendKeys, $backendCfg.default)
+    if ($bkIdx -lt 0) { $bkIdx = 0 }
+}
+$chosenBackend = $backendKeys[$bkIdx]
 $chosenBackend | Out-File -FilePath $lastBackendFile -NoNewline
 $backendCfg = $backendCfg.backends.$chosenBackend
 
