@@ -1,13 +1,14 @@
 {
   "default": "deepseek-home",
   "backends": {
-    "winidows": {
+    "windows": {
       "label": "Anthropic (Windows)",
       "description": "Direct to Anthropic on Windows. Uses stored OAuth login."
     },
     "wsl": {
       "label": "Anthropic (WSL)",
-      "description": "Direct to Anthropic API via WSL. Uses stored OAuth login."
+      "description": "Direct to Anthropic via WSL. Uses separate OAuth login inside WSL.",
+      "wsl": true
     },
     "deepseek-home": {
       "label": "DeepSeek (home proxy)",

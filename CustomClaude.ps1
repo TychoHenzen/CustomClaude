@@ -156,6 +156,12 @@ function Get-ClaudeVersion {
     return "unknown"
 }
 
+function ConvertTo-WslPath {
+    param([string]$WinPath)
+    $drive = $WinPath.Substring(0,1).ToLower()
+    return '/mnt/' + $drive + $WinPath.Substring(2).Replace('\', '/')
+}
+
 # -- Determine current version ------------------------------------------------
 
 $currentVer = Get-ClaudeVersion
@@ -713,7 +719,14 @@ Get-ChildItem env: | Where-Object { $_.Name -match '^(ANTHROPIC|CLAUDE|DEEPSEEK)
 Write-Host "  Env dump: $diagFile" -ForegroundColor DarkGray
 
 try {
-    if ($chosen) {
+    if ($backendCfg.wsl) {
+        if ($chosen) {
+            $wslPromptPath = ConvertTo-WslPath $chosen.FullName
+            & wsl bash -c "claude --system-prompt-file `"$wslPromptPath`"$extraArgsStr"
+        } else {
+            & wsl bash -c "claude$extraArgsStr"
+        }
+    } elseif ($chosen) {
         & "$env:ComSpec" /c "claude --system-prompt-file `"$($chosen.FullName)`"$extraArgsStr"
     } else {
         & "$env:ComSpec" /c "claude$extraArgsStr"
