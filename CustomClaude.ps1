@@ -1,27 +1,18 @@
 <#
 .SYNOPSIS
-    Launch Claude Code with custom system prompt, DeepSeek backend, patched binary.
+    Launch Claude Code with custom system prompt, backend, patched binary.
 .DESCRIPTION
     1. Pins CC to latest version with BOTH tweakcc-fixed prompt support AND connoisseur patched binary
     2. Installs stock CC, overlays connoisseur binary, applies tweakcc-fixed
-    3. Interactive system prompt + DeepSeek toggle, then launches
+    3. Interactive pickers for version, tweakcc preset, system prompt, backend
 .USAGE
-    CustomClaude                        # interactive
-    CustomClaude rme-strict             # pick prompt by name
-    CustomClaude rme-strict -DeepSeek   # direct + DeepSeek
-    CustomClaude -DeepSeek              # interactive + DeepSeek on
-    CustomClaude -ForceTweakcc          # kill all CC, force re-apply tweakcc
-    CustomClaude -q                      # quick: auto-accept all 4 steps from last config
+    CustomClaude       # interactive (4 pickers)
+    CustomClaude -q    # quick: auto-accept all 4 steps from last config
 #>
 
 param(
-    [string]$PromptName,
-    [switch]$DeepSeek,
-    [string]$Backend,
-    [switch]$ForceTweakcc,
     [switch]$q
 )
-$nonInteractive = $PromptName -or $q
 
 $ErrorActionPreference = "Stop"
 
@@ -165,12 +156,6 @@ function Get-ClaudeVersion {
     return "unknown"
 }
 
-# -- Force-tweakcc mode (kill everything, then fall through to normal flow) ---
-
-if ($ForceTweakcc) {
-    Kill-ClaudeProcs
-}
-
 # -- Determine current version ------------------------------------------------
 
 $currentVer = Get-ClaudeVersion
@@ -221,7 +206,7 @@ if ($intersectVersions.Count -eq 0) {
 $lastVersionFile = Join-Path $env:TEMP "customclaude-last-version.txt"
 $lastVersion = if (Test-Path $lastVersionFile) { (Get-Content $lastVersionFile -Raw).Trim() } else { "" }
 
-if ($nonInteractive) {
+if ($q) {
     # Non-interactive: use last version if valid, else latest
     if ($lastVersion -and $lastVersion -in $intersectVersions) {
         $targetVer = $lastVersion
@@ -497,7 +482,7 @@ function Apply-TweakccPreset {
 
 # -- Preset selection ---------------------------------------------------------
 
-if ($nonInteractive) {
+if ($q) {
     $chosenPreset = $lastPreset
     Write-Host ""
     Write-Host "  Tweakcc Preset: $chosenPreset (last used)" -ForegroundColor DarkGray
@@ -541,11 +526,11 @@ $chosenPreset | Out-File -FilePath $lastPresetFile -NoNewline
 
 # -- Apply tweakcc preset (skip if already done for this version) -------------
 
-if (-not $ForceTweakcc -and -not $forceApply -and $lastAppliedPreset -and
+if (-not $forceApply -and $lastAppliedPreset -and
     $chosenPreset -eq $lastAppliedPreset -and $currentVer -eq $lastAppliedVersion) {
     Write-Host "  Tweakcc '$chosenPreset' already applied ($currentVer), skipping." -ForegroundColor DarkGray
 } else {
-    if ($ForceTweakcc -or $forceApply) {
+    if ($forceApply) {
         Write-Host "  Forcing re-apply of '$chosenPreset'." -ForegroundColor Yellow
     }
     Apply-TweakccPreset -Preset $chosenPreset
@@ -593,21 +578,7 @@ $chosen = $null
 $lastPromptFile = Join-Path $env:TEMP "customclaude-last-prompt.txt"
 $lastPrompt = if (Test-Path $lastPromptFile) { (Get-Content $lastPromptFile -Raw).Trim() } else { "" }
 
-if ($PromptName) {
-    $match = $files | Where-Object { $_.BaseName -like "*$PromptName*" }
-    if ($match.Count -eq 0) {
-        Write-Host "No prompt matching '$PromptName'" -ForegroundColor Red
-        $files | ForEach-Object { Write-Host "  $($_.BaseName)" }
-        exit 1
-    }
-    if ($match.Count -gt 1) {
-        Write-Host "Multiple matches:" -ForegroundColor Yellow
-        $match | ForEach-Object { Write-Host "  $($_.BaseName)" }
-        exit 1
-    }
-    $chosen = $match[0]
-} elseif ($nonInteractive) {
-    # -q without -PromptName: use last prompt
+if ($q) {
     if ($lastPrompt) {
         $match = $files | Where-Object { $_.BaseName -eq $lastPrompt }
         if ($match) { $chosen = $match }
@@ -670,21 +641,10 @@ $backendKeys = @($backendCfg.backends.PSObject.Properties.Name)
 $lastBackendFile = Join-Path $env:TEMP "customclaude-last-backend.txt"
 $lastBackend = if (Test-Path $lastBackendFile) { (Get-Content $lastBackendFile -Raw).Trim() } else { $backendCfg.default }
 
-# Resolve backend name: -Backend param > -DeepSeek shorthand > last used > config default
+# Resolve backend: last used > config default
 $chosenBackend = $null
-if ($Backend) {
-    if ($Backend -in $backendKeys) { $chosenBackend = $Backend }
-    else {
-        Write-Host "  Unknown backend '$Backend'. Available: $($backendKeys -join ', ')" -ForegroundColor Red
-        exit 1
-    }
-} elseif ($DeepSeek.IsPresent) {
-    # Backwards compat: -DeepSeek maps to first backend with 'deepseek' in key, else 'deepseek-home'
-    $dsKey = $backendKeys | Where-Object { $_ -match 'deepseek' } | Select-Object -First 1
-    $chosenBackend = if ($dsKey) { $dsKey } else { "deepseek-home" }
-}
 
-if ($nonInteractive) {
+if ($q) {
     # Non-interactive: use last backend or default
     if (-not $chosenBackend) {
         $chosenBackend = if ($lastBackend -and $lastBackend -in $backendKeys) { $lastBackend } else { $backendCfg.default }
