@@ -132,9 +132,15 @@ function Apply-BackendEnv {
             Set-Item "Env:$($_.Name)" $_.Value
         }
     }
-    # Auth token routing: if proxy is used, auth token = api key
+    # Auth token routing: proxy backends route through local proxy
+    # Direct (native) backends use OAuth — MUST clear proxy leftovers
     if ($backendCfg.proxy -and $backendCfg.apiKey) {
         $env:ANTHROPIC_AUTH_TOKEN = $backendCfg.apiKey
+        $env:ANTHROPIC_API_KEY = $backendCfg.apiKey
+    } else {
+        Remove-Item "Env:ANTHROPIC_AUTH_TOKEN" -ErrorAction SilentlyContinue
+        Remove-Item "Env:ANTHROPIC_API_KEY" -ErrorAction SilentlyContinue
+        Remove-Item "Env:DEEPSEEK_API_KEY" -ErrorAction SilentlyContinue
     }
 }
 
