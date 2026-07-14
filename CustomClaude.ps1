@@ -138,9 +138,20 @@ function Apply-BackendEnv {
         $env:ANTHROPIC_AUTH_TOKEN = $backendCfg.apiKey
         $env:ANTHROPIC_API_KEY = $backendCfg.apiKey
     } else {
+        # Clear auth vars
         Remove-Item "Env:ANTHROPIC_AUTH_TOKEN" -ErrorAction SilentlyContinue
         Remove-Item "Env:ANTHROPIC_API_KEY" -ErrorAction SilentlyContinue
         Remove-Item "Env:DEEPSEEK_API_KEY" -ErrorAction SilentlyContinue
+        # Clear ALL env vars set by ANY proxy backend (self-healing: new backends
+        # with new env vars are auto-cleared without updating this function)
+        $allBackends = Load-BackendConfig
+        $allBackends.backends.PSObject.Properties | ForEach-Object {
+            if ($_.Value.env) {
+                $_.Value.env.PSObject.Properties | ForEach-Object {
+                    Remove-Item "Env:$($_.Name)" -ErrorAction SilentlyContinue
+                }
+            }
+        }
     }
 }
 
