@@ -267,6 +267,12 @@ try {
 }
 
 # -- Compute target version (intersection of both, with picker) ---------------
+# 2.1.205 is the last known-good CC version for tweakcc binary patches.
+# Versions >= 2.1.206 crash with "undefined is not an object (evaluating
+# 'e.toLowerCase')". Once tweakcc-fixed updates for compatibility, remove
+# this forced pin.
+
+$PINNED_GOOD_VERSION = "2.1.205"
 
 $intersectVersions = @()
 if ($connVersions) {
@@ -276,6 +282,13 @@ if ($connVersions) {
 if ($intersectVersions.Count -eq 0) {
     $intersectVersions = @($tweakccVersions | Sort-Object { [System.Version]$_ } -Descending | Select-Object -First 5)
     Write-Host "  No connoisseur intersection, using tweakcc-only versions." -ForegroundColor DarkGray
+}
+
+# Ensure pinned version is in the list (prepend if not already there)
+if ($PINNED_GOOD_VERSION -notin $intersectVersions) {
+    # Add it and re-sort descending, capped at 6
+    $intersectVersions = @(@($intersectVersions) + @($PINNED_GOOD_VERSION) |
+        Sort-Object { [System.Version]$_ } -Descending | Select-Object -First 6)
 }
 
 $lastVersionFile = Join-Path $env:TEMP "customclaude-last-version.txt"
@@ -288,14 +301,17 @@ if ($intersectVersions.Count -eq 1) {
     Write-Host ""
     Write-Host "  CC Version" -ForegroundColor Cyan
     Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
-    $defaultIdx = 0
+    # Default to the pinned version, not latest
+    $defaultIdx = [array]::IndexOf($intersectVersions, $PINNED_GOOD_VERSION)
+    if ($defaultIdx -lt 0) { $defaultIdx = 0 }
     if ($lastVersion -and $lastVersion -in $intersectVersions) {
         $defaultIdx = [array]::IndexOf($intersectVersions, $lastVersion)
     }
     for ($i = 0; $i -lt $intersectVersions.Count; $i++) {
         $v = $intersectVersions[$i]
         $tags = @()
-        if ($i -eq 0) { $tags += "latest" }
+        if ($v -eq $PINNED_GOOD_VERSION) { $tags += "pinned (last working)" }
+        elseif ($i -eq 0 -and [System.Version]$v -gt [System.Version]$PINNED_GOOD_VERSION) { $tags += "latest (may break tweakcc)" }
         if ($v -eq $currentVer) { $tags += "installed" }
         if ($v -eq $lastVersion) { $tags += "last" }
         $tagStr = if ($tags.Count -gt 0) { " ($($tags -join ', '))" } else { "" }
@@ -308,8 +324,8 @@ if ($intersectVersions.Count -eq 1) {
     if ($vChoice -eq "") { $vChoice = $defaultNum }
     $vIdx = [int]$vChoice - 1
     if ($vIdx -lt 0 -or $vIdx -ge $intersectVersions.Count) {
-        Write-Host "  Invalid, using latest." -ForegroundColor Yellow
-        $vIdx = 0
+        Write-Host "  Invalid, using pinned." -ForegroundColor Yellow
+        $vIdx = $defaultIdx
     }
     $targetVer = $intersectVersions[$vIdx]
 }
