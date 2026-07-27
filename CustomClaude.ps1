@@ -247,7 +247,11 @@ if (-not (Test-Path "$TweakccCloneDir\data\prompts")) {
     Write-Host "  Cloning tweakcc-fixed..." -ForegroundColor DarkGray
     & git clone --depth 1 --quiet "https://github.com/skrabe/tweakcc-fixed.git" $TweakccCloneDir
 } else {
-    & git -C $TweakccCloneDir pull --quiet
+    # tweakcc-fixed force-pushes its history, so `git pull` on this shallow
+    # clone fails as a non-fast-forward and leaves the clone stale — which
+    # silently freezes the version list below. Fetch + reset instead.
+    & git -C $TweakccCloneDir fetch --depth 1 --quiet origin 2>&1 | Out-Null
+    & git -C $TweakccCloneDir reset --hard --quiet FETCH_HEAD 2>&1 | Out-Null
 }
 
 $tweakccVersions = Get-ChildItem "$TweakccCloneDir\data\prompts" -Filter "prompts-*.json" -ErrorAction SilentlyContinue |
@@ -257,22 +261,21 @@ $tweakccVersions = Get-ChildItem "$TweakccCloneDir\data\prompts" -Filter "prompt
 # -- Query connoisseur releases -----------------------------------------------
 
 $connVersions = $null
+$connDates = @{}   # CC version -> release date, used to date-match preset repos
 try {
     $connReleases = Invoke-RestMethod -Uri 'https://api.github.com/repos/a-connoisseur/patch-claude-code/releases?per_page=100' -Headers $ghHeaders -TimeoutSec 10
     $connVersions = $connReleases | ForEach-Object {
-        if ($_.tag_name -match '^v([\d.]+)-win32-x64$') { $Matches[1] }
+        if ($_.tag_name -match '^v([\d.]+)-win32-x64$') {
+            $v = $Matches[1]
+            if (-not $connDates.ContainsKey($v)) { $connDates[$v] = [datetime]$_.published_at }
+            $v
+        }
     } | Select-Object -Unique
 } catch {
     Write-Host "  WARN: Could not query connoisseur releases: $_" -ForegroundColor Yellow
 }
 
 # -- Compute target version (intersection of both, with picker) ---------------
-# 2.1.205 is the last known-good CC version for tweakcc binary patches.
-# Versions >= 2.1.206 crash with "undefined is not an object (evaluating
-# 'e.toLowerCase')". Once tweakcc-fixed updates for compatibility, remove
-# this forced pin.
-
-$PINNED_GOOD_VERSION = "2.1.205"
 
 $intersectVersions = @()
 if ($connVersions) {
@@ -282,13 +285,6 @@ if ($connVersions) {
 if ($intersectVersions.Count -eq 0) {
     $intersectVersions = @($tweakccVersions | Sort-Object { [System.Version]$_ } -Descending | Select-Object -First 5)
     Write-Host "  No connoisseur intersection, using tweakcc-only versions." -ForegroundColor DarkGray
-}
-
-# Ensure pinned version is in the list (prepend if not already there)
-if ($PINNED_GOOD_VERSION -notin $intersectVersions) {
-    # Add it and re-sort descending, capped at 6
-    $intersectVersions = @(@($intersectVersions) + @($PINNED_GOOD_VERSION) |
-        Sort-Object { [System.Version]$_ } -Descending | Select-Object -First 6)
 }
 
 $lastVersionFile = Join-Path $env:TEMP "customclaude-last-version.txt"
@@ -301,17 +297,14 @@ if ($intersectVersions.Count -eq 1) {
     Write-Host ""
     Write-Host "  CC Version" -ForegroundColor Cyan
     Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
-    # Default to the pinned version, not latest
-    $defaultIdx = [array]::IndexOf($intersectVersions, $PINNED_GOOD_VERSION)
-    if ($defaultIdx -lt 0) { $defaultIdx = 0 }
+    $defaultIdx = 0
     if ($lastVersion -and $lastVersion -in $intersectVersions) {
         $defaultIdx = [array]::IndexOf($intersectVersions, $lastVersion)
     }
     for ($i = 0; $i -lt $intersectVersions.Count; $i++) {
         $v = $intersectVersions[$i]
         $tags = @()
-        if ($v -eq $PINNED_GOOD_VERSION) { $tags += "pinned (last working)" }
-        elseif ($i -eq 0 -and [System.Version]$v -gt [System.Version]$PINNED_GOOD_VERSION) { $tags += "latest (may break tweakcc)" }
+        if ($i -eq 0) { $tags += "latest" }
         if ($v -eq $currentVer) { $tags += "installed" }
         if ($v -eq $lastVersion) { $tags += "last" }
         $tagStr = if ($tags.Count -gt 0) { " ($($tags -join ', '))" } else { "" }
@@ -324,8 +317,8 @@ if ($intersectVersions.Count -eq 1) {
     if ($vChoice -eq "") { $vChoice = $defaultNum }
     $vIdx = [int]$vChoice - 1
     if ($vIdx -lt 0 -or $vIdx -ge $intersectVersions.Count) {
-        Write-Host "  Invalid, using pinned." -ForegroundColor Yellow
-        $vIdx = $defaultIdx
+        Write-Host "  Invalid, using latest." -ForegroundColor Yellow
+        $vIdx = 0
     }
     $targetVer = $intersectVersions[$vIdx]
 }
@@ -454,50 +447,147 @@ $lastAppliedVersion = if ($lastAppliedRaw -match '^(.+)@(.+)$') { $Matches[2] } 
 $chosenPreset = $null
 $forceApply   = $false
 
-function Initialize-TweakccPresets {
-    if (Test-Path $PresetsDir) { return }
+# Keep a persistent clone so later launches fetch instead of re-cloning.
+function Sync-PresetRepo {
+    param([string]$Url, [string]$Dir)
 
-    Write-Host ""
-    Write-Host "  First-run: setting up tweakcc presets..." -ForegroundColor DarkGray
+    if (Test-Path "$Dir\.git") {
+        # Tag and date resolution both need real history; earlier versions of
+        # this script cloned these repos with --depth 1.
+        if (Test-Path "$Dir\.git\shallow") {
+            & git -C $Dir fetch --unshallow --tags --quiet origin 2>&1 | Out-Null
+        }
+        & git -C $Dir fetch --tags --force --quiet origin 2>&1 | Out-Null
+        & git -C $Dir checkout --quiet --detach origin/HEAD 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            & git -C $Dir checkout --quiet --detach FETCH_HEAD 2>&1 | Out-Null
+        }
+        return $true
+    }
+    Remove-Item $Dir -Recurse -Force -ErrorAction SilentlyContinue
+    & git clone --quiet $Url $Dir 2>&1 | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
+# Newest tag of the form v<ccVersion>-<n> that is not ahead of $Version.
+# Exact match wins; otherwise the closest older release.
+function Resolve-PresetTag {
+    param([string]$Dir, [string]$Version)
+
+    $target = [System.Version]$Version
+    $best = $null; $bestVer = $null; $bestSeq = -1
+    foreach ($tag in @(& git -C $Dir tag --list "v*" 2>$null)) {
+        if ($tag -notmatch '^v(\d+\.\d+\.\d+)-(\d+)$') { continue }
+        $v = [System.Version]$Matches[1]; $seq = [int]$Matches[2]
+        if ($v -gt $target) { continue }
+        if ((-not $bestVer) -or ($v -gt $bestVer) -or ($v -eq $bestVer -and $seq -gt $bestSeq)) {
+            $best = $tag; $bestVer = $v; $bestSeq = $seq
+        }
+    }
+    return $best
+}
+
+# Repos without release tags get resolved by date: the last commit made before
+# the NEXT CC version shipped is the state that tracked $Version.
+function Resolve-PresetCommitByDate {
+    param([string]$Dir, [datetime]$Before)
+
+    $sha = (& git -C $Dir rev-list -n 1 --before="$($Before.ToString('yyyy-MM-ddTHH:mm:ssZ'))" HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ("$sha").Trim()
+}
+
+# Lobotomized ships one prompt set per model generation; older checkouts predate
+# the newer sets, so fall back down the list.
+function Get-LoboPromptDir {
+    param([string]$RepoDir)
+
+    foreach ($name in @("system-prompts-opus-5", "system-prompts-opus-4-8", "system-prompts-opus-4-7")) {
+        if (Test-Path "$RepoDir\$name") { return "$RepoDir\$name" }
+    }
+    $fallback = Get-ChildItem $RepoDir -Directory -Filter "system-prompts*" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($fallback) { return $fallback.FullName }
+    return $null
+}
+
+# Rebuild every generated preset against the CC version being installed. Runs on
+# every launch: upstream realigns its overrides to each CC release, and an
+# override left behind by a bump binds to identifiers that moved, which crashes
+# CC at prompt assembly rather than failing loudly.
+function Sync-TweakccPresets {
+    param([string]$Version, [datetime]$UpperBound)
+
+    $marker = Join-Path $PresetsDir ".synced-version"
+    $synced = if (Test-Path $marker) { (Get-Content $marker -Raw).Trim() } else { "" }
+
     @("stock", "unnerfcc", "lobotomized", "combined", "basis-custom") | ForEach-Object {
         New-Item -ItemType Directory -Path "$PresetsDir\$_\system-prompts" -Force | Out-Null
         New-Item -ItemType Directory -Path "$PresetsDir\$_\system-reminders" -Force | Out-Null
     }
-    foreach ($subdir in @("system-prompts", "system-reminders")) {
-        if (Test-Path "$TweakccDir\$subdir") {
-            Get-ChildItem "$TweakccDir\$subdir" -ErrorAction SilentlyContinue |
-                Copy-Item -Destination "$PresetsDir\basis-custom\$subdir\" -Force -ErrorAction SilentlyContinue
+    # basis-custom is the operator's own set — seed it once, never overwrite.
+    if (-not $synced) {
+        foreach ($subdir in @("system-prompts", "system-reminders")) {
+            if (Test-Path "$TweakccDir\$subdir") {
+                Get-ChildItem "$TweakccDir\$subdir" -ErrorAction SilentlyContinue |
+                    Copy-Item -Destination "$PresetsDir\basis-custom\$subdir\" -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 
+    if ($synced -eq $Version) {
+        Write-Host "  Presets already synced to $Version." -ForegroundColor DarkGray
+        return
+    }
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Write-Host "  WARNING: git not found, skipping repo clones" -ForegroundColor Yellow
+        Write-Host "  WARNING: git not found, presets left as-is" -ForegroundColor Yellow
         return
     }
 
-    Write-Host "  Cloning lukehutch/unnerfcc..." -ForegroundColor DarkGray
-    & git clone --depth 1 --quiet "https://github.com/lukehutch/unnerfcc.git" "$PresetsDir\_unnerfcc-repo"
-    if ($LASTEXITCODE -eq 0) {
-        Get-ChildItem "$PresetsDir\_unnerfcc-repo\system-prompts" -Filter "*.md" -ErrorAction SilentlyContinue |
-            Copy-Item -Destination "$PresetsDir\unnerfcc\system-prompts\" -Force
-        Remove-Item "$PresetsDir\_unnerfcc-repo" -Recurse -Force -ErrorAction SilentlyContinue
-    } else { Write-Host "  WARNING: Failed to clone unnerfcc" -ForegroundColor Yellow }
+    Write-Host ""
+    Write-Host "  Syncing presets to CC $Version..." -ForegroundColor DarkGray
 
-    Write-Host "  Cloning skrabe/lobotomized-claude-code..." -ForegroundColor DarkGray
-    & git clone --depth 1 --quiet "https://github.com/skrabe/lobotomized-claude-code.git" "$PresetsDir\_lobotomized-repo"
-    if ($LASTEXITCODE -eq 0) {
-        $loboPromptsDir = "$PresetsDir\_lobotomized-repo\system-prompts-opus-4-8"
-        if (Test-Path $loboPromptsDir) {
+    $unnerfRepo = "$PresetsDir\_unnerfcc-repo"
+    if (Sync-PresetRepo -Url "https://github.com/lukehutch/unnerfcc.git" -Dir $unnerfRepo) {
+        $ref = Resolve-PresetTag -Dir $unnerfRepo -Version $Version
+        if (-not $ref) { $ref = Resolve-PresetCommitByDate -Dir $unnerfRepo -Before $UpperBound }
+        if ($ref) {
+            & git -C $unnerfRepo checkout --quiet --detach $ref 2>&1 | Out-Null
+            Write-Host "  unnerfcc @ $ref" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  unnerfcc @ HEAD (no matching tag or date)" -ForegroundColor Yellow
+        }
+        Get-ChildItem "$PresetsDir\unnerfcc\system-prompts" -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem "$unnerfRepo\system-prompts" -Filter "*.md" -ErrorAction SilentlyContinue |
+            Copy-Item -Destination "$PresetsDir\unnerfcc\system-prompts\" -Force
+    } else { Write-Host "  WARNING: Failed to sync unnerfcc" -ForegroundColor Yellow }
+
+    $loboRepo = "$PresetsDir\_lobotomized-repo"
+    if (Sync-PresetRepo -Url "https://github.com/skrabe/lobotomized-claude-code.git" -Dir $loboRepo) {
+        $ref = Resolve-PresetTag -Dir $loboRepo -Version $Version
+        if (-not $ref) { $ref = Resolve-PresetCommitByDate -Dir $loboRepo -Before $UpperBound }
+        if ($ref) {
+            & git -C $loboRepo checkout --quiet --detach $ref 2>&1 | Out-Null
+            Write-Host "  lobotomized @ $ref" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  lobotomized @ HEAD (no matching tag or date)" -ForegroundColor Yellow
+        }
+        foreach ($subdir in @("system-prompts", "system-reminders")) {
+            Get-ChildItem "$PresetsDir\lobotomized\$subdir" -ErrorAction SilentlyContinue |
+                Remove-Item -Force -ErrorAction SilentlyContinue
+        }
+        $loboPromptsDir = Get-LoboPromptDir -RepoDir $loboRepo
+        if ($loboPromptsDir) {
+            Write-Host "  lobotomized set: $(Split-Path $loboPromptsDir -Leaf)" -ForegroundColor DarkGray
             Get-ChildItem $loboPromptsDir -Filter "*.md" |
                 Copy-Item -Destination "$PresetsDir\lobotomized\system-prompts\" -Force
         }
-        $loboRemindersDir = "$PresetsDir\_lobotomized-repo\system-reminders"
-        if (Test-Path $loboRemindersDir) {
-            Get-ChildItem $loboRemindersDir -Filter "*.md" |
+        if (Test-Path "$loboRepo\system-reminders") {
+            Get-ChildItem "$loboRepo\system-reminders" -Filter "*.md" |
                 Copy-Item -Destination "$PresetsDir\lobotomized\system-reminders\" -Force
         }
-        Remove-Item "$PresetsDir\_lobotomized-repo" -Recurse -Force -ErrorAction SilentlyContinue
-    } else { Write-Host "  WARNING: Failed to clone lobotomized" -ForegroundColor Yellow }
+    } else { Write-Host "  WARNING: Failed to sync lobotomized" -ForegroundColor Yellow }
 
     # Build combined: lobotomized base + unnerfcc behavioral content merged in
     # Strategy: size-based heuristic. Lobotomized base (compressed, inline docs, MCP routing).
@@ -506,6 +596,9 @@ function Initialize-TweakccPresets {
     Write-Host "  Building combined preset..." -ForegroundColor DarkGray
     $combinedPrompts = "$PresetsDir\combined\system-prompts"
     $combinedReminders = "$PresetsDir\combined\system-reminders"
+    foreach ($dir in @($combinedPrompts, $combinedReminders)) {
+        Get-ChildItem $dir -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
 
     # Start with lobotomized as base (prompts + reminders)
     Copy-Item "$PresetsDir\lobotomized\system-prompts\*.md" $combinedPrompts -Force -ErrorAction SilentlyContinue
@@ -542,7 +635,8 @@ function Initialize-TweakccPresets {
     $remCount   = @(Get-ChildItem $combinedReminders -Name -ErrorAction SilentlyContinue).Count
     Write-Host "  Combined: $promptCount prompts, $remCount reminders (${catA} lobo-adds, ${catB} data-stubs, ${catC} behavioral overwrites)" -ForegroundColor Green
 
-    Write-Host "  Presets initialized." -ForegroundColor Green
+    $Version | Out-File -FilePath $marker -NoNewline
+    Write-Host "  Presets synced to $Version." -ForegroundColor Green
 }
 
 function Apply-TweakccPreset {
@@ -565,7 +659,14 @@ function Apply-TweakccPreset {
 
 # -- Preset selection ---------------------------------------------------------
 
-Initialize-TweakccPresets
+# Date bound for preset repos without release tags: upstream commits that landed
+# before the NEXT CC version shipped are the ones that tracked $targetVer.
+$presetUpperBound = (Get-Date).ToUniversalTime().AddDays(1)
+$nextVer = @($connDates.Keys | Where-Object { [System.Version]$_ -gt [System.Version]$targetVer } |
+    Sort-Object { [System.Version]$_ } | Select-Object -First 1)
+if ($nextVer -and $nextVer[0]) { $presetUpperBound = $connDates[$nextVer[0]] }
+
+Sync-TweakccPresets -Version $targetVer -UpperBound $presetUpperBound
 Write-Host ""
 Write-Host "  Tweakcc Preset" -ForegroundColor Cyan
 Write-Host "  $('-' * 40)" -ForegroundColor DarkGray
