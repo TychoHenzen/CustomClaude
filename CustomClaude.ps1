@@ -31,27 +31,6 @@ $PromptsDir = Join-Path $RepoDir "SystemPrompts"
 $BackendsCfg = Join-Path $env:USERPROFILE ".claude\backends.json"
 $ghHeaders = @{'Accept'='application/vnd.github+json'; 'User-Agent'='customclaude'}
 
-# -- Keep the deployed shim current -------------------------------------------
-# The .cmd on PATH is a copy of the one in this repo, so a fix to it cannot
-# reach a machine on its own. Refresh it from the clone whenever they differ.
-# Only ever touches a file that is already there — running this script straight
-# out of a dev checkout must not litter its parent directory.
-
-$deployedShim = Join-Path (Split-Path $RepoDir -Parent) "CustomClaude.cmd"
-$repoShim = Join-Path $RepoDir "CustomClaude.cmd"
-if ((Test-Path $deployedShim) -and (Test-Path $repoShim)) {
-    $a = (Get-FileHash $deployedShim -Algorithm SHA256).Hash
-    $b = (Get-FileHash $repoShim -Algorithm SHA256).Hash
-    if ($a -ne $b) {
-        try {
-            Copy-Item $repoShim $deployedShim -Force
-            Write-Host "  Updated the launcher shim at $deployedShim" -ForegroundColor DarkGray
-        } catch {
-            Write-Host "  WARN: could not update the shim: $_" -ForegroundColor Yellow
-        }
-    }
-}
-
 # -- Backend config -----------------------------------------------------------
 
 function Load-BackendConfig {
@@ -200,9 +179,71 @@ function ConvertTo-WslPath {
     return '/mnt/' + $drive + $WinPath.Substring(2).Replace('\', '/')
 }
 
+# Everything here patches the NATIVE install at $ClaudeExe. An npm install of
+# claude-code is a second, unpatched copy, and if its shim sits earlier on PATH
+# it is the one that runs — with none of the tweakcc work applied and no sign
+# that anything is wrong.
+function Find-NpmClaudeInstall {
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { return $null }
+
+    $prefixes = @()
+    if ($env:APPDATA) { $prefixes += (Join-Path $env:APPDATA 'npm') }
+    try {
+        $p = "$(& npm prefix -g 2>$null)".Trim()
+        if ($p -and ($p -notin $prefixes)) { $prefixes += $p }
+    } catch {}
+
+    # A malformed APPDATA or an npm prefix that came back as something other
+    # than a path makes Test-Path throw, and $ErrorActionPreference here is
+    # Stop — a bad environment variable must not take the launcher down.
+    foreach ($prefix in $prefixes) {
+        if (-not $prefix) { continue }
+        if (-not (Test-Path $prefix -ErrorAction SilentlyContinue)) { continue }
+        $pkg = Join-Path $prefix 'node_modules\@anthropic-ai\claude-code'
+        if (Test-Path $pkg -ErrorAction SilentlyContinue) { return $pkg }
+    }
+    return $null
+}
+
+function Assert-NativeClaudeInstall {
+    param([switch]$Quiet)
+
+    $npmPkg = Find-NpmClaudeInstall
+    if ($npmPkg) {
+        Write-Host "  Found an npm install of claude-code at:" -ForegroundColor Yellow
+        Write-Host "    $npmPkg" -ForegroundColor DarkGray
+        Write-Host "  It is a separate, unpatched copy of Claude Code." -ForegroundColor Yellow
+        if ($Quiet) {
+            Write-Host "  Run CustomClaude without -q to remove it." -ForegroundColor DarkGray
+        } else {
+            $ans = Read-Host "  Uninstall it? [Y/n]"
+            if ($ans -eq "" -or $ans -match '^[Yy]') {
+                & npm uninstall -g "@anthropic-ai/claude-code"
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  npm install removed." -ForegroundColor Green
+                } else {
+                    Write-Host "  WARN: npm uninstall failed (exit $LASTEXITCODE)." -ForegroundColor Yellow
+                }
+            } else {
+                Write-Host "  Left in place. It may shadow the patched native binary." -ForegroundColor DarkGray
+            }
+        }
+    }
+
+    # Independent of npm: PATH order decides what a bare `claude` resolves to.
+    # We launch $ClaudeExe by absolute path, so this is only a warning about
+    # what the user gets when they type `claude` themselves.
+    $onPath = Get-Command claude -ErrorAction SilentlyContinue
+    if ($onPath -and $onPath.Source -and ($onPath.Source -ne $ClaudeExe)) {
+        Write-Host "  NOTE: `claude` on PATH resolves to $($onPath.Source)," -ForegroundColor Yellow
+        Write-Host "        not the patched $ClaudeExe" -ForegroundColor DarkGray
+    }
+}
+
 # -- Quick-launch: skip version/patch/tweakcc, just load last config and go ---
 
 if ($q) {
+    Assert-NativeClaudeInstall -Quiet
     $backendCfg = Load-BackendConfig
     $backendKeys = @($backendCfg.backends.PSObject.Properties.Name)
     $lastBackendFile = Join-Path $env:TEMP "customclaude-last-backend.txt"
@@ -242,9 +283,9 @@ if ($q) {
             & wsl bash -c "claude$extraArgsStr"
         }
     } elseif ($chosen) {
-        & "$env:ComSpec" /c "claude --system-prompt-file `"$($chosen.FullName)`"$extraArgsStr"
+        & "$env:ComSpec" /c "`"$ClaudeExe`" --system-prompt-file `"$($chosen.FullName)`"$extraArgsStr"
     } else {
-        & "$env:ComSpec" /c "claude$extraArgsStr"
+        & "$env:ComSpec" /c "`"$ClaudeExe`"$extraArgsStr"
     }
     if ($proxyResult.process) {
         try { $proxyResult.process.Kill() } catch {}
@@ -253,6 +294,8 @@ if ($q) {
 }
 
 # -- Determine current version ------------------------------------------------
+
+Assert-NativeClaudeInstall
 
 $currentVer = Get-ClaudeVersion
 Write-Host "  CC binary: $ClaudeExe" -ForegroundColor DarkGray
@@ -897,9 +940,9 @@ try {
             & wsl bash -c "claude$extraArgsStr"
         }
     } elseif ($chosen) {
-        & "$env:ComSpec" /c "claude --system-prompt-file `"$($chosen.FullName)`"$extraArgsStr"
+        & "$env:ComSpec" /c "`"$ClaudeExe`" --system-prompt-file `"$($chosen.FullName)`"$extraArgsStr"
     } else {
-        & "$env:ComSpec" /c "claude$extraArgsStr"
+        & "$env:ComSpec" /c "`"$ClaudeExe`"$extraArgsStr"
     }
 } finally {
     if ($proxyProcess -or $proxyWasAlreadyRunning) {
