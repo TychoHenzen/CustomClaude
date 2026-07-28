@@ -31,6 +31,27 @@ $PromptsDir = Join-Path $RepoDir "SystemPrompts"
 $BackendsCfg = Join-Path $env:USERPROFILE ".claude\backends.json"
 $ghHeaders = @{'Accept'='application/vnd.github+json'; 'User-Agent'='customclaude'}
 
+# -- Keep the deployed shim current -------------------------------------------
+# The .cmd on PATH is a copy of the one in this repo, so a fix to it cannot
+# reach a machine on its own. Refresh it from the clone whenever they differ.
+# Only ever touches a file that is already there — running this script straight
+# out of a dev checkout must not litter its parent directory.
+
+$deployedShim = Join-Path (Split-Path $RepoDir -Parent) "CustomClaude.cmd"
+$repoShim = Join-Path $RepoDir "CustomClaude.cmd"
+if ((Test-Path $deployedShim) -and (Test-Path $repoShim)) {
+    $a = (Get-FileHash $deployedShim -Algorithm SHA256).Hash
+    $b = (Get-FileHash $repoShim -Algorithm SHA256).Hash
+    if ($a -ne $b) {
+        try {
+            Copy-Item $repoShim $deployedShim -Force
+            Write-Host "  Updated the launcher shim at $deployedShim" -ForegroundColor DarkGray
+        } catch {
+            Write-Host "  WARN: could not update the shim: $_" -ForegroundColor Yellow
+        }
+    }
+}
+
 # -- Backend config -----------------------------------------------------------
 
 function Load-BackendConfig {
