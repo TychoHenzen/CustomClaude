@@ -1,0 +1,59 @@
+#!/bin/sh
+# Global pre-commit hook, installed through core.hooksPath.
+#
+# Strips "ste-lint: off" lines from staged prose files. The LLM sometimes
+# adds this marker to bypass the write guard. This hook removes it before
+# the commit so the marker never reaches the repository.
+
+set -e
+
+NODE="node"
+if ! command -v node >/dev/null 2>&1; then
+  if [ -x "/c/Program Files/nodejs/node.exe" ]; then
+    NODE="/c/Program Files/nodejs/node.exe"
+  else
+    NODE=""
+  fi
+fi
+
+if [ -z "$NODE" ]; then
+  exit 0
+fi
+
+cleaned=0
+
+for file in $(git diff --cached --name-only --diff-filter=ACM 2>/dev/null); do
+  case "$file" in
+    *.md|*.mdx|*.txt|*.rst|*.adoc) ;;
+    *) continue ;;
+  esac
+
+  # Read staged content, not the working tree
+  staged=$(git show ":$file" 2>/dev/null) || continue
+
+  # Check first 500 chars for the marker
+  head=$(printf '%s' "$staged" | head -c 500)
+  case "$head" in
+    *ste-lint:*off*|*ste-lint:*OFF*) ;;
+    *) continue ;;
+  esac
+
+  # Strip the marker line, write to working tree, re-stage
+  printf '%s\n' "$staged" | sed '/^[[:space:]]*ste-lint:[[:space:]]*off[[:space:]]*$/Id' > "$file"
+  git add "$file"
+  cleaned=$((cleaned + 1))
+  echo "  pre-commit: stripped ste-lint marker from $file"
+done
+
+if [ "$cleaned" -gt 0 ]; then
+  echo "  pre-commit: cleaned $cleaned file(s)"
+fi
+
+# Chain to the repository hook
+GIT_DIR_PATH="$(git rev-parse --git-dir 2>/dev/null || echo '')"
+REPO_HOOK="$GIT_DIR_PATH/hooks/pre-commit"
+if [ -n "$GIT_DIR_PATH" ] && [ -x "$REPO_HOOK" ]; then
+  "$REPO_HOOK" "$@" || exit $?
+fi
+
+exit 0

@@ -1,5 +1,13 @@
 # Prompt: install the writing and code structure enforcement
 
+`CustomClaude.ps1` runs this install on every full launch. It copies the trees
+and writes `~/.claude/enforcement.md`. It adds one `@enforcement.md` include
+line to `~/.claude/CLAUDE.md`. It merges the hook entries. It sets
+`core.hooksPath` when that value is empty.
+
+Use the prompt below only for a machine without the
+launcher, or to check the result by hand.
+
 Copy the text below the line into Claude Code on the target machine. Run it from
 a checkout of this repository.
 

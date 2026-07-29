@@ -29,7 +29,194 @@ $TweakccCloneDir = Join-Path $RepoDir ".cache\tweakcc-fixed"
 $PresetsDir = Join-Path $RepoDir "tweakcc-presets"
 $PromptsDir = Join-Path $RepoDir "SystemPrompts"
 $BackendsCfg = Join-Path $env:USERPROFILE ".claude\backends.json"
+$ClaudeHome = Join-Path $env:USERPROFILE ".claude"
+$EnforcementSrc = Join-Path $RepoDir "enforcement\claude"
 $ghHeaders = @{'Accept'='application/vnd.github+json'; 'User-Agent'='customclaude'}
+$Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+
+# -- Writing and code structure enforcement -----------------------------------
+# The checkers live in this repository under enforcement/claude, which mirrors
+# ~/.claude. A launcher run is the only moment we know the checkout is current.
+# The deployed copy is refreshed here, not by a separate install step.
+
+function Copy-EnforcementTrees {
+    $changed = 0
+    foreach ($tree in @("ste", "hooks", "git-hooks", "quality", "lib")) {
+        $src = Join-Path $EnforcementSrc $tree
+        if (-not (Test-Path $src)) { continue }
+        foreach ($file in @(Get-ChildItem $src -Recurse -File)) {
+            $rel = $file.FullName.Substring($EnforcementSrc.Length).TrimStart('\')
+            $dst = Join-Path $ClaudeHome $rel
+            $dstDir = Split-Path $dst -Parent
+            if (-not (Test-Path $dstDir)) {
+                New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+            }
+            if (Test-Path $dst) {
+                $srcHash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash
+                $dstHash = (Get-FileHash $dst -Algorithm SHA256).Hash
+                if ($srcHash -eq $dstHash) { continue }
+            }
+            Copy-Item $file.FullName $dst -Force
+            Write-Host "  Enforcement: updated $rel" -ForegroundColor DarkGray
+            $changed++
+        }
+    }
+    return $changed
+}
+
+# The rule text goes in its own file next to CLAUDE.md. CLAUDE.md itself only
+# ever gains one include line, so a hand-written section there is never touched.
+function Write-EnforcementRules {
+    $parts = @()
+    foreach ($name in @("CLAUDE-section.md", "CLAUDE-code-section.md")) {
+        $path = Join-Path $EnforcementSrc $name
+        if (Test-Path $path) {
+            $parts += ((Get-Content $path -Raw) -replace "`r`n", "`n").TrimEnd()
+        }
+    }
+    if ($parts.Count -eq 0) { return 0 }
+
+    $body = ($parts -join "`n`n") + "`n"
+    $target = Join-Path $ClaudeHome "enforcement.md"
+    if (Test-Path $target) {
+        $current = (Get-Content $target -Raw) -replace "`r`n", "`n"
+        if ($current -eq $body) { return 0 }
+    }
+    [System.IO.File]::WriteAllText($target, $body, $Utf8NoBom)
+    Write-Host "  Enforcement: wrote $target" -ForegroundColor DarkGray
+    return 1
+}
+
+# New include lines join the block of includes at the top, where CLAUDE.md keeps
+# the others. Content below that block stays where the operator put it.
+function Add-EnforcementInclude {
+    $claudeMd = Join-Path $ClaudeHome "CLAUDE.md"
+    $line = "@enforcement.md"
+    if (-not (Test-Path $claudeMd)) {
+        [System.IO.File]::WriteAllText($claudeMd, "$line`n", $Utf8NoBom)
+        Write-Host "  Enforcement: created $claudeMd with $line" -ForegroundColor DarkGray
+        return 1
+    }
+
+    $lines = @(Get-Content $claudeMd)
+    if ($lines -contains $line) { return 0 }
+    $idx = 0
+    while ($idx -lt $lines.Count -and $lines[$idx] -match '^@\S') { $idx++ }
+    $merged = @()
+    if ($idx -gt 0) { $merged += $lines[0..($idx - 1)] }
+    $merged += $line
+    if ($idx -lt $lines.Count) { $merged += $lines[$idx..($lines.Count - 1)] }
+    [System.IO.File]::WriteAllLines($claudeMd, [string[]]$merged, $Utf8NoBom)
+    Write-Host "  Enforcement: added $line to CLAUDE.md" -ForegroundColor Green
+    return 1
+}
+
+# An older install pasted the same rules straight into CLAUDE.md. Two copies in
+# context waste tokens and drift apart, but only the operator may cut theirs.
+function Test-EnforcementDuplicateRules {
+    $claudeMd = Join-Path $ClaudeHome "CLAUDE.md"
+    if (-not (Test-Path $claudeMd)) { return }
+    $text = Get-Content $claudeMd -Raw
+    foreach ($heading in @("## Writing: Simplified Technical English", "## Code structure: ratchet")) {
+        if ($text -match [regex]::Escape($heading)) {
+            Write-Host "  NOTE: CLAUDE.md still holds an inline '$heading' section." -ForegroundColor Yellow
+            Write-Host "        enforcement.md now carries it. Remove the inline copy." -ForegroundColor DarkGray
+        }
+    }
+}
+
+function New-EnforcementHookEntry {
+    param([string]$Matcher, [string]$Script, [int]$TimeoutSec)
+
+    $node = (Get-Command node -ErrorAction SilentlyContinue)
+    $nodeCmd = if ($node) { "`"$($node.Source)`"" } else { "node" }
+    $target = (Join-Path $ClaudeHome $Script) -replace '\\', '/'
+    $hook = [pscustomobject]@{
+        type    = "command"
+        command = "$nodeCmd `"$target`""
+        timeout = $TimeoutSec
+    }
+    if ($Matcher) {
+        return [pscustomobject]@{ matcher = $Matcher; hooks = @($hook) }
+    }
+    return [pscustomobject]@{ hooks = @($hook) }
+}
+
+# We match on the script file name, not on the whole command. A hand-edited node
+# path or wrapper then stays in place, and no second copy of the hook appears.
+function Sync-EnforcementHooks {
+    $settingsPath = Join-Path $ClaudeHome "settings.json"
+    if (-not (Test-Path $settingsPath)) {
+        Write-Host "  WARN: no $settingsPath, hooks not registered." -ForegroundColor Yellow
+        return 0
+    }
+    $raw = Get-Content $settingsPath -Raw
+    try {
+        $json = $raw | ConvertFrom-Json
+    } catch {
+        Write-Host "  WARN: settings.json does not parse, hooks not registered." -ForegroundColor Yellow
+        return 0
+    }
+    if (-not $json.hooks) {
+        $json | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+
+    $wanted = @(
+        @{ Event = "PostToolUse"; Matcher = "Write|Edit|MultiEdit|NotebookEdit"; Script = "hooks/ste-write-guard.mjs"; Timeout = 15 },
+        @{ Event = "PostToolUse"; Matcher = "Write|Edit|MultiEdit";              Script = "quality/quality-guard.mjs";  Timeout = 30 },
+        @{ Event = "Stop";        Matcher = "";                                  Script = "hooks/ste-reply-guard.mjs";  Timeout = 10 }
+    )
+    $added = 0
+    foreach ($spec in $wanted) {
+        $leaf = Split-Path $spec.Script -Leaf
+        if ($raw -match [regex]::Escape($leaf)) { continue }
+        $event = $spec.Event
+        $existing = @()
+        if ($json.hooks.PSObject.Properties.Name -contains $event) {
+            $existing = @($json.hooks.$event)
+        }
+        $entry = New-EnforcementHookEntry -Matcher $spec.Matcher -Script $spec.Script -TimeoutSec $spec.Timeout
+        $json.hooks | Add-Member -NotePropertyName $event -NotePropertyValue ($existing + $entry) -Force
+        Write-Host "  Enforcement: registered $leaf on $event" -ForegroundColor Green
+        $added++
+    }
+    if ($added -eq 0) { return 0 }
+
+    Copy-Item $settingsPath "$settingsPath.bak" -Force
+    [System.IO.File]::WriteAllText($settingsPath, ($json | ConvertTo-Json -Depth 30), $Utf8NoBom)
+    return $added
+}
+
+function Sync-EnforcementGitHooks {
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return 0 }
+    $want = (Join-Path $ClaudeHome "git-hooks") -replace '\\', '/'
+    $current = "$(& git config --global core.hooksPath 2>$null)".Trim()
+    if (-not $current) {
+        & git config --global core.hooksPath $want
+        Write-Host "  Enforcement: set core.hooksPath to $want" -ForegroundColor Green
+        return 1
+    }
+    if (($current -replace '\\', '/').TrimEnd('/') -ne $want.TrimEnd('/')) {
+        Write-Host "  NOTE: core.hooksPath is $current, not $want." -ForegroundColor Yellow
+        Write-Host "        The commit message check does not run. Left as is." -ForegroundColor DarkGray
+    }
+    return 0
+}
+
+function Sync-Enforcement {
+    if (-not (Test-Path $EnforcementSrc)) {
+        Write-Host "  WARN: $EnforcementSrc missing, enforcement not synced." -ForegroundColor Yellow
+        return
+    }
+    $changed = (Copy-EnforcementTrees) + (Write-EnforcementRules) + (Add-EnforcementInclude)
+    $changed += (Sync-EnforcementHooks) + (Sync-EnforcementGitHooks)
+    Test-EnforcementDuplicateRules
+    if ($changed -eq 0) {
+        Write-Host "  Enforcement: up to date." -ForegroundColor DarkGray
+    } else {
+        Write-Host "  Enforcement: $changed change(s) applied." -ForegroundColor Green
+    }
+}
 
 # -- Backend config -----------------------------------------------------------
 
@@ -296,6 +483,7 @@ if ($q) {
 # -- Determine current version ------------------------------------------------
 
 Assert-NativeClaudeInstall
+Sync-Enforcement
 
 $currentVer = Get-ClaudeVersion
 Write-Host "  CC binary: $ClaudeExe" -ForegroundColor DarkGray

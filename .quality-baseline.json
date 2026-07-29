@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "profile": "default",
+  "total": 61,
+  "counts": {
+    "enforcement/claude/ste/ste-lint.mjs::file-length": 1,
+    "enforcement/claude/ste/ste-lint.mjs::complexity": 8,
+    "enforcement/claude/ste/ste-lint.mjs::function-length": 4,
+    "enforcement/claude/ste/ste-lint.mjs::line-length": 41,
+    "enforcement/claude/ste/ste-lint.mjs::nesting-depth": 1,
+    "enforcement/claude/ste/ste-lint.mjs::param-count": 1,
+    "enforcement/claude/ste/ste-lint.mjs::else-branch": 5
+  },
+  "updatedAt": "2026-07-29T19:39:02.967Z"
+}

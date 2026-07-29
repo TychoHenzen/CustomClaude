@@ -398,7 +398,12 @@ function splitSentences(text) {
     if (!/\s/.test(flat[i + 1] ?? ' ')) continue;
     const before = flat.slice(Math.max(0, i - 12), i).match(/([\w.]+)$/);
     const word = before ? before[1].toLowerCase() : '';
-    if (ABBREV.has(word) || /^\d+$/.test(word) || word.length === 1) continue;
+    if (ABBREV.has(word) || /^[a-z]$/.test(word)) continue;
+    // A bare number before the period is an enumerator only where a segment
+    // starts, as in "1. Do this". Anywhere else the number ends a sentence.
+    // Skipping every number glued such a sentence to the next one and reported
+    // one false long-sentence error over the pair.
+    if (/^\d+$/.test(word) && !flat.slice(start, i - word.length).trim()) continue;
     parts.push({ text: flat.slice(start, i + 1), offset: start });
     start = i + 1;
   }
