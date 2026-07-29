@@ -17,6 +17,10 @@ assembly_order:
     min-strictness: lean
     domains: all
     backends: all
+  - id: ste-writing
+    min-strictness: lean
+    domains: all
+    backends: all
   - id: reading-before-acting
     min-strictness: lean
     domains: all
