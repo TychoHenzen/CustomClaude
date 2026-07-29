@@ -10,6 +10,7 @@
 
 import { readFileSync } from 'node:fs';
 import { lint, classify, isDisabled, format } from '../ste/ste-lint.mjs';
+import { changedRanges } from '../lib/changed-lines.mjs';
 
 const MAX_BYTES = 400_000;
 const MAX_REPORTED = 25;
@@ -20,38 +21,6 @@ function readStdin() {
   } catch {
     return null;
   }
-}
-
-const WHOLE_FILE = [{ from: 1, to: Number.MAX_SAFE_INTEGER }];
-
-function countLines(s) {
-  return (s.match(/\n/g) || []).length;
-}
-
-/** Line ranges, 1-based and inclusive, that this tool call wrote. */
-function changedRanges(input, text) {
-  const tool = input.tool_name;
-  if (tool !== 'Edit' && tool !== 'MultiEdit') return WHOLE_FILE;
-
-  const edits = tool === 'MultiEdit'
-    ? (input.tool_input?.edits || [])
-    : [input.tool_input || {}];
-
-  const ranges = [];
-  for (const edit of edits) {
-    const added = edit.new_string;
-    if (typeof added !== 'string' || !added) continue;
-    let at = text.indexOf(added);
-    while (at !== -1) {
-      const from = countLines(text.slice(0, at)) + 1;
-      ranges.push({ from, to: from + countLines(added) });
-      at = edit.replace_all ? text.indexOf(added, at + added.length) : -1;
-    }
-    // The edit did not survive verbatim. Fall back to the whole file rather
-    // than silently checking nothing.
-    if (!ranges.length && text.indexOf(added) === -1) return WHOLE_FILE;
-  }
-  return ranges.length ? ranges : WHOLE_FILE;
 }
 
 function main() {

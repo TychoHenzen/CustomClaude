@@ -31,6 +31,22 @@ layers: []
 Apply to code you write. Flag in code you review. Don't refactor existing code to meet these unless that's the task.
 <!-- @end -->
 
+### Structure gate
+
+A hook scans every file you write. It compares that file against a recorded
+baseline, not against an absolute bound.
+
+- A tracked file may not raise the count of any error-severity rule. Old debt
+  never blocks. New debt always blocks.
+- A new file passes unless a metric goes past 1.5 times the hard bound.
+- Hard bounds: line 120, file 300 lines, function 60 lines, complexity 10,
+  7 parameters, nesting depth 5, one type per file.
+- Also blocked: unnamed tuples, unused locals, commented-out code.
+- The repository linter runs first when the repository configures one.
+
+Write to the preferred bounds, not the hard ones. Line 80, file 100 lines,
+function 30 lines, complexity 5, 3 parameters, nesting depth 3.
+
 ### Comments
 
 Default: none. Only when WHY is non-obvious — hidden constraint, subtle invariant, workaround. Never explain WHAT. Never reference task/ticket/PR.
