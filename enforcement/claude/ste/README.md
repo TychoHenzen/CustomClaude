@@ -63,7 +63,11 @@ reads comments and user-facing message strings only, never the code.
 
 ## Escape hatches
 
-- Put `ste-lint: off` in the first 500 characters of a file to skip that file.
+- `touch .prose-skip` waives the next blocked write, once.
+- `echo '{"exempt": true}' > .prose-skip` also adds the file to
+  `.github/quality/prose-exempt.json`, so later writes skip it.
+- Both delete the sentinel and append to `.github/quality/prose-skip-log.json`.
+  The pre-commit hook refuses a commit while a record stays unacknowledged.
 - Set `STE_LINT=off` in the environment to disable every check.
 - Commit with `--no-verify` to skip the commit message check once.
 - Wrap a quoted example word in backticks. The checker masks code spans, so a

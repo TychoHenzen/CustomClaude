@@ -41,7 +41,7 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
 function Copy-EnforcementTrees {
     $changed = 0
-    foreach ($tree in @("ste", "hooks", "git-hooks")) {
+    foreach ($tree in @("ste", "hooks", "git-hooks", "lib")) {
         $src = Join-Path $EnforcementSrc $tree
         if (-not (Test-Path $src)) { continue }
         foreach ($file in @(Get-ChildItem $src -Recurse -File)) {

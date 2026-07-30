@@ -69,7 +69,11 @@ commit message, and every chat reply. Run it directly:
 node ~/.claude/ste/ste-lint.mjs --tier=strict path/to/file.md
 ```
 
-Put `ste-lint: off` in the first lines of a file to exempt it. Set `STE_LINT=off`
-to disable every check. The checker cannot judge whether a paragraph is true.
-It fixes the form of slop, not hollow content.
+Blocked and sure the prose is right? Run `touch .prose-skip` to waive the next
+write. Run `echo '{"exempt": true}' > .prose-skip` to exempt the whole file.
+Both work once, delete the sentinel, and leave a record the commit hook asks
+you to sign off. There is no marker you can put inside the file itself.
+
+The checker cannot judge whether a paragraph is true. It fixes the form of
+slop, not hollow content.
 

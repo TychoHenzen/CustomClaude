@@ -560,8 +560,17 @@ export function classify(filePath) {
   return { kind: null, reason: 'not a prose target' };
 }
 
-export function isDisabled(text) {
-  return /ste-lint:\s*off/i.test(text.slice(0, 500)) || process.env.STE_LINT === 'off';
+/**
+ * Only an operator can switch the linter off, and only for one command.
+ *
+ * There used to be an in-band `ste-lint: off` marker read from the file head.
+ * That put the switch inside the thing under test. The writer could disable
+ * its own check, and every later edit to that file stayed unchecked. Use a
+ * `.prose-skip` sentinel instead. A sentinel is out-of-band, works once, and
+ * leaves a record.
+ */
+export function isDisabled(_text) {
+  return process.env.STE_LINT === 'off';
 }
 
 export function format(violations, label) {

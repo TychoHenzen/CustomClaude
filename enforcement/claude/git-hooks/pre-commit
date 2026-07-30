@@ -1,9 +1,13 @@
 #!/bin/sh
 # Global pre-commit hook, installed through core.hooksPath.
 #
-# Strips "ste-lint: off" lines from staged prose files. The LLM sometimes
-# adds this marker to bypass the write guard. This hook removes it before
-# the commit so the marker never reaches the repository.
+# Refuses a commit while a prose-gate waiver is still unacknowledged. A
+# .prose-skip sentinel is a deliberate bypass of the writing rules, so a human
+# has to sign it off before it lands.
+#
+# This replaces the old marker strip. The guard used to accept an in-band
+# "ste-lint: off" line, and this hook deleted that line before the commit. That
+# hid the bypass instead of recording it.
 
 set -e
 
@@ -16,37 +20,11 @@ if ! command -v node >/dev/null 2>&1; then
   fi
 fi
 
-if [ -z "$NODE" ]; then
-  exit 0
-fi
-
-cleaned=0
-
-for file in $(git diff --cached --name-only --diff-filter=ACM 2>/dev/null); do
-  case "$file" in
-    *.md|*.mdx|*.txt|*.rst|*.adoc) ;;
-    *) continue ;;
-  esac
-
-  # Read staged content, not the working tree
-  staged=$(git show ":$file" 2>/dev/null) || continue
-
-  # Check first 500 chars for the marker
-  head=$(printf '%s' "$staged" | head -c 500)
-  case "$head" in
-    *ste-lint:*off*|*ste-lint:*OFF*) ;;
-    *) continue ;;
-  esac
-
-  # Strip the marker line, write to working tree, re-stage
-  printf '%s\n' "$staged" | sed '/^[[:space:]]*ste-lint:[[:space:]]*off[[:space:]]*$/Id' > "$file"
-  git add "$file"
-  cleaned=$((cleaned + 1))
-  echo "  pre-commit: stripped ste-lint marker from $file"
-done
-
-if [ "$cleaned" -gt 0 ]; then
-  echo "  pre-commit: cleaned $cleaned file(s)"
+if [ -n "$NODE" ] && [ "$STE_LINT" != "off" ]; then
+  CHECK="$HOME/.claude/ste/check-skips.mjs"
+  if [ -f "$CHECK" ]; then
+    "$NODE" "$CHECK" "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" || exit $?
+  fi
 fi
 
 # Chain to the repository hook

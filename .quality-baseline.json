@@ -1,15 +1,22 @@
 {
   "version": 1,
   "profile": "default",
-  "total": 61,
+  "total": 74,
   "counts": {
+    "enforcement/claude/ste/sentinel.mjs::file-length": 1,
+    "enforcement/claude/ste/sentinel.mjs::line-length": 2,
+    "enforcement/claude/hooks/ste-write-guard.mjs::file-length": 1,
+    "enforcement/claude/hooks/ste-write-guard.mjs::complexity": 2,
+    "enforcement/claude/hooks/ste-write-guard.mjs::function-length": 1,
+    "enforcement/claude/hooks/ste-write-guard.mjs::line-length": 6,
     "enforcement/claude/ste/ste-lint.mjs::file-length": 1,
     "enforcement/claude/ste/ste-lint.mjs::complexity": 8,
     "enforcement/claude/ste/ste-lint.mjs::function-length": 4,
-    "enforcement/claude/ste/ste-lint.mjs::line-length": 41,
+    "enforcement/claude/ste/ste-lint.mjs::line-length": 40,
     "enforcement/claude/ste/ste-lint.mjs::nesting-depth": 1,
     "enforcement/claude/ste/ste-lint.mjs::param-count": 1,
-    "enforcement/claude/ste/ste-lint.mjs::else-branch": 5
+    "enforcement/claude/ste/ste-lint.mjs::else-branch": 5,
+    "enforcement/claude/ste/check-skips.mjs::line-length": 1
   },
-  "updatedAt": "2026-07-29T19:39:02.967Z"
+  "updatedAt": "2026-07-30T10:59:00.154Z"
 }

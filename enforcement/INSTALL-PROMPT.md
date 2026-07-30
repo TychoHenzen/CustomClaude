@@ -63,7 +63,7 @@ Six more decisions that already cost debugging time:
 ## Steps
 
 1. Copy the tree. Run
-   `cp -r enforcement/claude/ste enforcement/claude/hooks enforcement/claude/git-hooks ~/.claude/`.
+   `cp -r enforcement/claude/ste enforcement/claude/hooks enforcement/claude/git-hooks enforcement/claude/lib ~/.claude/`.
 2. Read `~/.claude/CLAUDE.md`. Find the section about plain language or word
    choice, if one exists.
 3. Replace that section with the text in `enforcement/claude/CLAUDE-section.md`.
@@ -161,18 +161,21 @@ Expect that commit to pass.
    exit 0. Commit again. Expect the word in the output.
 
 6. Set up a scratch repository for the code gate. Use a real OS path. A git
-   bash path such as `/tmp/x` does not resolve for node on Windows.
+   bash path such as `/tmp/x` does not resolve for node on Windows. The gate
+   reads `.github/quality/quality-baseline.json`, and it exits 0 when that
+   file is absent, so record one first.
 
 ```bash
-rm -rf /tmp/qrepo && mkdir /tmp/qrepo && cd /tmp/qrepo && git init -q
-git config user.email t@t.t && git config user.name t
+Q=~/.claude/plugins/marketplaces/dod-guard/packages/quality-guard
+R=$(mktemp -d) && W=$(cd $R && pwd -W) && cd $R && git init -q
+mkdir -p .github/quality
 printf 'export function pick(v) {\n  if (v === 1) return 1;\n  return 0;\n}\n' > a.js
-git add a.js && git commit -qm "feat: add a picker" --no-verify
-W=$(pwd -W 2>/dev/null || pwd)
-echo "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$W/a.js\"}}" \n  | node ~/.claude/plugins/marketplaces/dod-guard/packages/quality-guard/scripts/quality-guard.mjs
+node $Q/skills/quality-refactor/scripts/quality-scan.mjs . --root=$W \
+  --write-baseline=$W/.github/quality/quality-baseline.json
+echo "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$W/a.js\"}}" | node $Q/scripts/quality-guard.mjs
 ```
 
-Expect exit code 0. Expect a new `.quality-baseline.json` in the repository.
+Expect exit code 0.
 
 7. Add a function with eight parameters and deep nesting to `a.js`. Run the
    same command again. Expect exit code 2. Expect `complexity` and
@@ -181,10 +184,22 @@ Expect exit code 0. Expect a new `.quality-baseline.json` in the repository.
 8. Confirm that the baseline did not change after that block. A blocked write
    must not record the worse shape.
 
-9. Write a new file with the same bad function under a new name. Run the guard
-   on it. Expect exit code 2 and the words `new-file ceiling`.
+9. Run `touch .quality-skip`, then run the guard again. Expect exit code 2,
+   because a plain sentinel never waives a tracked-file regression. Then run
+   `echo '{"rebaseline": true}' > .quality-skip` and run the guard again.
+   Expect exit code 0, a deleted sentinel, and a record in
+   `.github/quality/skip-log.json`.
 
-10. Delete `/tmp/slop.md`, `/tmp/sterepo` and `/tmp/qrepo`.
+10. Check the prose sentinel. In the scratch prose repository, write a bad
+    sentence and run the write guard. Expect exit code 2. Run
+    `touch .prose-skip` and run it again. Expect exit code 0 and a record in
+    `.github/quality/prose-skip-log.json`. Then run
+    `node ~/.claude/ste/check-skips.mjs .` and expect exit code 1.
+
+11. Confirm the old marker is dead. Put `ste-lint: off` at the top of a bad
+    prose file and run the write guard. Expect exit code 2.
+
+12. Delete `/tmp/slop.md`, `/tmp/sterepo` and `/tmp/qrepo`.
 
 ## Known limits
 
@@ -197,5 +212,6 @@ Expect exit code 0. Expect a new `.quality-baseline.json` in the repository.
   Rust and C# get the structural rules alone.
 - `dead-export`, `test-only-export` and `duplicate-block` never run in the
   gate. Run the scanner across the whole repository to check those.
-- Escape hatches: `ste-lint: off` in the first 500 characters of a file,
-  `STE_LINT=off` in the environment, and `git commit --no-verify`.
+- Escape hatches: a `.prose-skip` sentinel for prose, a `.quality-skip`
+  sentinel for code, `STE_LINT=off` in the environment, and
+  `git commit --no-verify`. Both sentinels work once and leave a record.
