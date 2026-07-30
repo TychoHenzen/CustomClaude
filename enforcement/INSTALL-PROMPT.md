@@ -104,6 +104,24 @@ Six more decisions that already cost debugging time:
 }
 ```
 
+9a. Add this entry to the `PreToolUse` array. It refuses a `git commit` while
+    a prose waiver stays unacknowledged. It still works when a repository
+    points `core.hooksPath` at its own directory and shadows the pre-commit
+    hook:
+
+```json
+{
+  "matcher": "Bash",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "node \"$HOME/.claude/hooks/ste-commit-gate.mjs\"",
+      "timeout": 10
+    }
+  ]
+}
+```
+
 10. Keep every hook that is already in those arrays. Merge, do not replace.
 11. Verify that `settings.json` still parses as JSON.
 12. Run `chmod +x ~/.claude/git-hooks/commit-msg`.

@@ -253,10 +253,19 @@ function maskMarkdown(text) {
 
   let masked = out.join('\n');
 
-  // Inline regions, in order: HTML comments, code spans, links, bare URLs, paths.
+  // Inline regions, in order: HTML comments, code spans, quoted speech, links,
+  // bare URLs, paths. Quoted speech runs after code spans and before links.
+  // A code span that holds a quote character stays masked as code first.
+  // A quoted span that holds a path or a flag gets masked whole first, so
+  // the later path and flag patterns cannot split it apart.
   masked = maskPattern(masked, /<!--[\s\S]*?-->/g);
   // A code span may wrap one line, so allow a single newline inside it.
   masked = maskPattern(masked, /`[^`\n]*(\n[^`\n]*)?`/g);
+  // Only the ASCII double quote opens and closes a span. An apostrophe would
+  // close it early. Allow at most one newline inside, the same allowance the
+  // code span pattern makes. A blank line has no non-newline character for
+  // `[^"\n]` to eat, so a span never crosses one.
+  masked = maskPattern(masked, /"[^"\n]*(\n[^"\n]*)?"/g);
   masked = maskPattern(masked, /\]\([^)\s]*\)/g);
   masked = maskPattern(masked, /\bhttps?:\/\/\S+/g);
   masked = maskPattern(masked, /\b[\w.-]+\.(md|js|mjs|ts|py|ps1|cmd|json|yaml|yml|rs|cs|sh|txt|toml)\b/g);
@@ -389,11 +398,37 @@ function segments(masked, heading) {
   return blocks;
 }
 
+/** Separator characters that end a sentence like a period, when a run of
+ *  them stands between white space. Used for index and apparatus lines,
+ *  e.g. entries joined by a middle dot, a bullet, or a table pipe. */
+const SEPARATOR_CHARS = '\u00b7\u2022|';
+
 function splitSentences(text) {
   const flat = text.replace(/\n/g, ' ');
   const parts = [];
   let start = 0;
+
+  // A sentence starts at its first word, not at the white space before it.
+  // `lineOf` counts the line breaks strictly before an offset, so an offset
+  // that still points at the break reports the line above. A sentence that
+  // begins right after a line break would then be reported one line early.
+  const firstWord = (at) => {
+    let k = at;
+    while (k < flat.length && /\s/.test(flat[k])) k++;
+    return k;
+  };
+
   for (let i = 0; i < flat.length; i++) {
+    if (SEPARATOR_CHARS.includes(flat[i])) {
+      if (!/\s/.test(flat[i - 1] ?? '')) continue;
+      let j = i;
+      while (j < flat.length && SEPARATOR_CHARS.includes(flat[j])) j++;
+      if (!/\s/.test(flat[j] ?? ' ')) continue;
+      parts.push({ text: flat.slice(start, j), offset: start });
+      start = firstWord(j);
+      i = j - 1;
+      continue;
+    }
     if (!'.!?'.includes(flat[i])) continue;
     if (!/\s/.test(flat[i + 1] ?? ' ')) continue;
     const before = flat.slice(Math.max(0, i - 12), i).match(/([\w.]+)$/);
@@ -405,7 +440,7 @@ function splitSentences(text) {
     // one false long-sentence error over the pair.
     if (/^\d+$/.test(word) && !flat.slice(start, i - word.length).trim()) continue;
     parts.push({ text: flat.slice(start, i + 1), offset: start });
-    start = i + 1;
+    start = firstWord(i + 1);
   }
   if (start < flat.length) parts.push({ text: flat.slice(start), offset: start });
   return parts.filter((p) => p.text.trim());

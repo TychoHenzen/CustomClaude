@@ -34,6 +34,78 @@ $EnforcementSrc = Join-Path $RepoDir "enforcement\claude"
 $ghHeaders = @{'Accept'='application/vnd.github+json'; 'User-Agent'='customclaude'}
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
+# -- git ----------------------------------------------------------------------
+# Two faults used to end the launch here, and both hid what happened.
+#
+# git writes .git/index.lock while it changes the index. It removes the lock
+# when it finishes. A killed git leaves the lock behind, and every later
+# command on that clone refuses to run.
+#
+# On top of that, this script sets $ErrorActionPreference to Stop, and PowerShell
+# turns a native command's stderr into a terminating error once the stream is
+# redirected. Every call used the form `git ... 2>&1 | Out-Null`, so one line on
+# stderr ended the whole launch, and the redirect threw away the line that said
+# why. A stale lock in the tweakcc clone stopped customclaude from starting at
+# all, with no usable message.
+#
+# Clear the lock, because the lock is the fault. Report anything else in full.
+
+# Remove a lock no live git holds. These commands finish in well under a second,
+# so a lock older than the threshold belongs to a process that is gone.
+function Remove-StaleGitLock {
+    param([string]$Dir, [int]$MinAgeSeconds = 10)
+
+    $lock = Join-Path $Dir ".git\index.lock"
+    if (-not (Test-Path $lock)) { return $false }
+    $age = (Get-Date) - (Get-Item $lock).LastWriteTime
+    if ($age.TotalSeconds -lt $MinAgeSeconds) { return $false }
+    Remove-Item $lock -Force -ErrorAction SilentlyContinue
+    return -not (Test-Path $lock)
+}
+
+# Run git and return its exit code and its output. Never throws, so a failed
+# git is a value the caller reads, not a dead script. Merges stderr into the
+# text on purpose: that text is the error report.
+function Invoke-Git {
+    param([string[]]$GitArgs)
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        # A redirected stderr line arrives as an ErrorRecord. Take the message
+        # git wrote and drop the PowerShell frame around it.
+        $lines = & git @GitArgs 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" }
+        }
+        $code = $LASTEXITCODE
+        $text = ($lines -join "`n").Trim()
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    return [pscustomobject]@{ Ok = ($code -eq 0); Code = $code; Text = $text }
+}
+
+# Run one git step against a clone. Clears a stale lock and tries again, then
+# prints git's own words when it still fails. Returns whether the step worked.
+function Invoke-GitStep {
+    param([string]$What, [string]$Dir, [string[]]$GitArgs)
+
+    $result = Invoke-Git -GitArgs $GitArgs
+    if ($result.Ok) { return $true }
+
+    if ($Dir -and $result.Text -match 'index\.lock' -and (Remove-StaleGitLock -Dir $Dir)) {
+        Write-Host "  Cleared a stale git lock in $Dir" -ForegroundColor DarkGray
+        $result = Invoke-Git -GitArgs $GitArgs
+        if ($result.Ok) { return $true }
+    }
+
+    Write-Host "  WARNING: $What failed (git exit $($result.Code))" -ForegroundColor Yellow
+    foreach ($line in ($result.Text -split "`r?`n")) {
+        if ($line.Trim()) { Write-Host "    $line" -ForegroundColor DarkGray }
+    }
+    return $false
+}
+
 # -- Writing and code structure enforcement -----------------------------------
 # The checkers live in this repository under enforcement/claude, which mirrors
 # ~/.claude. A launcher run is the only moment we know the checkout is current.
@@ -162,8 +234,9 @@ function Sync-EnforcementHooks {
     }
 
     $wanted = @(
-        @{ Event = "PostToolUse"; Matcher = "Write|Edit|MultiEdit|NotebookEdit"; Script = "hooks/ste-write-guard.mjs"; Timeout = 15 },
-        @{ Event = "Stop";        Matcher = "";                                  Script = "hooks/ste-reply-guard.mjs";  Timeout = 10 }
+        @{ Event = "PostToolUse"; Matcher = "Write|Edit|MultiEdit|NotebookEdit"; Script = "hooks/ste-write-guard.mjs";  Timeout = 15 },
+        @{ Event = "Stop";        Matcher = "";                                  Script = "hooks/ste-reply-guard.mjs";  Timeout = 10 },
+        @{ Event = "PreToolUse";  Matcher = "Bash";                              Script = "hooks/ste-commit-gate.mjs";  Timeout = 10 }
     )
     $added = 0
     foreach ($spec in $wanted) {
@@ -496,13 +569,18 @@ if (-not (Test-Path "$TweakccCloneDir\data\prompts")) {
         Remove-Item $TweakccCloneDir -Recurse -Force -ErrorAction SilentlyContinue
     }
     Write-Host "  Cloning tweakcc-fixed..." -ForegroundColor DarkGray
-    & git clone --depth 1 --quiet "https://github.com/skrabe/tweakcc-fixed.git" $TweakccCloneDir
+    Invoke-GitStep -What "tweakcc-fixed clone" -Dir "" -GitArgs @(
+        "clone", "--depth", "1", "--quiet",
+        "https://github.com/skrabe/tweakcc-fixed.git", $TweakccCloneDir) | Out-Null
 } else {
     # tweakcc-fixed force-pushes its history, so `git pull` on this shallow
     # clone fails as a non-fast-forward and leaves the clone stale — which
     # silently freezes the version list below. Fetch + reset instead.
-    & git -C $TweakccCloneDir fetch --depth 1 --quiet origin 2>&1 | Out-Null
-    & git -C $TweakccCloneDir reset --hard --quiet FETCH_HEAD 2>&1 | Out-Null
+    if (Invoke-GitStep -What "tweakcc-fixed fetch" -Dir $TweakccCloneDir -GitArgs @(
+            "-C", $TweakccCloneDir, "fetch", "--depth", "1", "--quiet", "origin")) {
+        Invoke-GitStep -What "tweakcc-fixed reset" -Dir $TweakccCloneDir -GitArgs @(
+            "-C", $TweakccCloneDir, "reset", "--hard", "--quiet", "FETCH_HEAD") | Out-Null
+    }
 }
 
 $tweakccVersions = Get-ChildItem "$TweakccCloneDir\data\prompts" -Filter "prompts-*.json" -ErrorAction SilentlyContinue |
@@ -702,22 +780,25 @@ $forceApply   = $false
 function Sync-PresetRepo {
     param([string]$Url, [string]$Dir)
 
+    $name = Split-Path $Dir -Leaf
     if (Test-Path "$Dir\.git") {
         # Tag and date resolution both need real history; earlier versions of
         # this script cloned these repos with --depth 1.
         if (Test-Path "$Dir\.git\shallow") {
-            & git -C $Dir fetch --unshallow --tags --quiet origin 2>&1 | Out-Null
+            Invoke-GitStep -What "$name unshallow" -Dir $Dir -GitArgs @(
+                "-C", $Dir, "fetch", "--unshallow", "--tags", "--quiet", "origin") | Out-Null
         }
-        & git -C $Dir fetch --tags --force --quiet origin 2>&1 | Out-Null
-        & git -C $Dir checkout --quiet --detach origin/HEAD 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            & git -C $Dir checkout --quiet --detach FETCH_HEAD 2>&1 | Out-Null
+        Invoke-GitStep -What "$name fetch" -Dir $Dir -GitArgs @(
+            "-C", $Dir, "fetch", "--tags", "--force", "--quiet", "origin") | Out-Null
+        if (-not (Invoke-GitStep -What "$name checkout" -Dir $Dir -GitArgs @(
+                "-C", $Dir, "checkout", "--quiet", "--detach", "origin/HEAD"))) {
+            Invoke-GitStep -What "$name checkout of the fetched head" -Dir $Dir -GitArgs @(
+                "-C", $Dir, "checkout", "--quiet", "--detach", "FETCH_HEAD") | Out-Null
         }
         return $true
     }
     Remove-Item $Dir -Recurse -Force -ErrorAction SilentlyContinue
-    & git clone --quiet $Url $Dir 2>&1 | Out-Null
-    return ($LASTEXITCODE -eq 0)
+    return (Invoke-GitStep -What "$name clone" -Dir "" -GitArgs @("clone", "--quiet", $Url, $Dir))
 }
 
 # Newest tag of the form v<ccVersion>-<n> that is not ahead of $Version.
@@ -803,7 +884,8 @@ function Sync-TweakccPresets {
         $ref = Resolve-PresetTag -Dir $unnerfRepo -Version $Version
         if (-not $ref) { $ref = Resolve-PresetCommitByDate -Dir $unnerfRepo -Before $UpperBound }
         if ($ref) {
-            & git -C $unnerfRepo checkout --quiet --detach $ref 2>&1 | Out-Null
+            Invoke-GitStep -What "unnerfcc checkout" -Dir $unnerfRepo -GitArgs @(
+                "-C", $unnerfRepo, "checkout", "--quiet", "--detach", $ref) | Out-Null
             Write-Host "  unnerfcc @ $ref" -ForegroundColor DarkGray
         } else {
             Write-Host "  unnerfcc @ HEAD (no matching tag or date)" -ForegroundColor Yellow
@@ -819,7 +901,8 @@ function Sync-TweakccPresets {
         $ref = Resolve-PresetTag -Dir $loboRepo -Version $Version
         if (-not $ref) { $ref = Resolve-PresetCommitByDate -Dir $loboRepo -Before $UpperBound }
         if ($ref) {
-            & git -C $loboRepo checkout --quiet --detach $ref 2>&1 | Out-Null
+            Invoke-GitStep -What "lobotomized checkout" -Dir $loboRepo -GitArgs @(
+                "-C", $loboRepo, "checkout", "--quiet", "--detach", $ref) | Out-Null
             Write-Host "  lobotomized @ $ref" -ForegroundColor DarkGray
         } else {
             Write-Host "  lobotomized @ HEAD (no matching tag or date)" -ForegroundColor Yellow
