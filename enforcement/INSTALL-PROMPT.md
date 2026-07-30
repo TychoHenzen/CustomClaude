@@ -20,8 +20,9 @@ Do not rewrite the checkers from the rule lists.
 Two halves ship together:
 
 - Prose. ASD-STE100 Simplified Technical English, checked by `ste-lint`.
-- Code. Structural bounds, checked by the `quality-refactor` scanner behind a
-  ratchet.
+- Code. Structural bounds, checked by the `quality-guard` plugin behind a
+  ratchet. That half no longer lives here. It ships from the dod-guard
+  marketplace and installs with `/plugin`.
 
 ## Decisions already made
 
@@ -36,8 +37,9 @@ Three layers cover the work:
 2. A checker that decides the mechanical rules.
 3. Hooks that block a write when the checker finds an error.
 
-Both checkers ship in this repository under `enforcement/claude/`. That tree
-mirrors `~/.claude/`. Copy the files. Do not write new ones.
+The prose checker ships in this repository under `enforcement/claude/`. That
+tree mirrors `~/.claude/`. Copy the files. Do not write new ones. The code gate
+ships as the `quality-guard` plugin and needs no copying at all.
 
 Six more decisions that already cost debugging time:
 
@@ -53,23 +55,24 @@ Six more decisions that already cost debugging time:
   pattern such as `^[A-Za-z-]+:` also eats a `feat:` subject line.
 - The code gate is a ratchet, never an absolute bound. An absolute gate blocks
   most edits to any file that already carries debt.
-- The code gate drops `duplicate-block`, `dead-export` and `test-only-export`.
-  Those need whole-project reachability. A single-file scan calls every export
-  dead.
+- The code gate lived here once, wired by hand into `settings.json`. It now
+  ships as the `quality-guard` plugin, which declares its own `PostToolUse`
+  hook and reads `.github/quality/quality-baseline.json`. Do not reinstate the
+  hand-wired copy.
 
 ## Steps
 
 1. Copy the tree. Run
-   `cp -r enforcement/claude/ste enforcement/claude/hooks enforcement/claude/git-hooks enforcement/claude/quality enforcement/claude/lib ~/.claude/`.
+   `cp -r enforcement/claude/ste enforcement/claude/hooks enforcement/claude/git-hooks ~/.claude/`.
 2. Read `~/.claude/CLAUDE.md`. Find the section about plain language or word
    choice, if one exists.
 3. Replace that section with the text in `enforcement/claude/CLAUDE-section.md`.
    If no such section exists, append the text.
 4. Append the text in `enforcement/claude/CLAUDE-code-section.md` as well.
 5. Keep any existing rule about ASCII punctuation. The new section points at it.
-6. Confirm that the `dod-guard` plugin is installed. The code gate calls its
-   `quality-refactor` scanner. Without that plugin the gate exits 0 and does
-   nothing.
+6. Install the `quality-guard` plugin from the dod-guard marketplace. It
+   carries the code gate, its scanner and the `/quality-refactor` skill. No
+   `settings.json` entry is needed for it. The plugin declares its own hook.
 7. Open `~/.claude/settings.json`. Find the node command used by other hooks.
    Use the same path. Use plain `node` if no other hook names one.
 8. Add this entry to the `PostToolUse` array:
@@ -87,22 +90,7 @@ Six more decisions that already cost debugging time:
 }
 ```
 
-9. Add this entry to the `PostToolUse` array as well:
-
-```json
-{
-  "matcher": "Write|Edit|MultiEdit",
-  "hooks": [
-    {
-      "type": "command",
-      "command": "node \"$HOME/.claude/quality/quality-guard.mjs\"",
-      "timeout": 30
-    }
-  ]
-}
-```
-
-10. Add this entry to the `Stop` array:
+9. Add this entry to the `Stop` array:
 
 ```json
 {
@@ -116,12 +104,12 @@ Six more decisions that already cost debugging time:
 }
 ```
 
-11. Keep every hook that is already in those arrays. Merge, do not replace.
-12. Verify that `settings.json` still parses as JSON.
-13. Run `chmod +x ~/.claude/git-hooks/commit-msg`.
-14. Read the current value of `git config --global core.hooksPath`.
-15. If that value is empty, run `git config --global core.hooksPath "$HOME/.claude/git-hooks"`.
-16. If that value is not empty, stop and report it. Do not overwrite it.
+10. Keep every hook that is already in those arrays. Merge, do not replace.
+11. Verify that `settings.json` still parses as JSON.
+12. Run `chmod +x ~/.claude/git-hooks/commit-msg`.
+13. Read the current value of `git config --global core.hooksPath`.
+14. If that value is empty, run `git config --global core.hooksPath "$HOME/.claude/git-hooks"`.
+15. If that value is not empty, stop and report it. Do not overwrite it.
 
 The system prompt components need no work. `SystemPrompts/basis/components/ste-writing.md`,
 the structure gate section in `code-quality.md`, and the `manifest.yaml` entry
@@ -181,7 +169,7 @@ git config user.email t@t.t && git config user.name t
 printf 'export function pick(v) {\n  if (v === 1) return 1;\n  return 0;\n}\n' > a.js
 git add a.js && git commit -qm "feat: add a picker" --no-verify
 W=$(pwd -W 2>/dev/null || pwd)
-echo "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$W/a.js\"}}" | node ~/.claude/quality/quality-guard.mjs
+echo "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$W/a.js\"}}" \n  | node ~/.claude/plugins/marketplaces/dod-guard/packages/quality-guard/scripts/quality-guard.mjs
 ```
 
 Expect exit code 0. Expect a new `.quality-baseline.json` in the repository.

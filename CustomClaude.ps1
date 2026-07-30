@@ -41,7 +41,7 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
 function Copy-EnforcementTrees {
     $changed = 0
-    foreach ($tree in @("ste", "hooks", "git-hooks", "quality", "lib")) {
+    foreach ($tree in @("ste", "hooks", "git-hooks")) {
         $src = Join-Path $EnforcementSrc $tree
         if (-not (Test-Path $src)) { continue }
         foreach ($file in @(Get-ChildItem $src -Recurse -File)) {
@@ -163,7 +163,6 @@ function Sync-EnforcementHooks {
 
     $wanted = @(
         @{ Event = "PostToolUse"; Matcher = "Write|Edit|MultiEdit|NotebookEdit"; Script = "hooks/ste-write-guard.mjs"; Timeout = 15 },
-        @{ Event = "PostToolUse"; Matcher = "Write|Edit|MultiEdit";              Script = "quality/quality-guard.mjs";  Timeout = 30 },
         @{ Event = "Stop";        Matcher = "";                                  Script = "hooks/ste-reply-guard.mjs";  Timeout = 10 }
     )
     $added = 0
