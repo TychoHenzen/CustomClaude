@@ -4,11 +4,16 @@ backends.json
 # Generated / cloned at runtime
 .cache/
 tweakcc-presets/
+enforcement/claude/ste/data/
 
 # Editor
 *.swp
 *~
 .vscode/
+.idea/
+
+# Local research notes
+lexical complexity.md
 
 # OS
 Thumbs.db

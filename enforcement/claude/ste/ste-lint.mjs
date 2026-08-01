@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * ste-lint - mechanical checker for ASD-STE100 Simplified Technical English.
+ * ste-lint - mechanical checker for sentence structure and word readability.
  *
  * Checks only the rules a machine can decide: sentence length, semicolons,
- * contractions, banned vocabulary, nominalizations, passive voice with a
- * named actor, and non-ASCII punctuation. It cannot judge whether a
- * sentence is true or whether a technical noun is the right one.
+ * slop words, filler openers, nominalizations, weak openers, and the em
+ * dash. It cannot judge whether a sentence is true or whether a technical
+ * noun is the right one.
  *
  * Tiers:
- *   strict   - procedures, runbooks, error messages. 20-word cap, full dictionary.
- *   flavored - READMEs, docs, comments, commit bodies. 25-word cap, slop dictionary only.
+ *   strict   - procedures, runbooks, error messages. 20-word sentence cap.
+ *   flavored - READMEs, docs, comments, commit bodies. 25-word sentence cap.
  *
  * Severities:
  *   error - blocks (hooks exit 2)
- *   warn  - reported, never blocks. Used where the word has a real technical sense.
+ *   warn  - reported, never blocks.
  *
  * CLI:
  *   node ste-lint.mjs [--tier=strict|flavored] [--format=text|json] <file>...
@@ -23,6 +23,8 @@
 
 import { readFileSync } from 'node:fs';
 import { basename, extname, sep } from 'node:path';
+import { hardWordRule, readabilityRule } from './rules-readability.mjs';
+import { nounStackRule, clausePileupRule } from './rules-structure.mjs';
 
 // ---------------------------------------------------------------------------
 // Dictionaries
@@ -58,60 +60,6 @@ const SLOP = [
   ['myriad', 'many'],
 ];
 
-/** Verbose: long word where a short one exists. Flagged in strict tier only. */
-const VERBOSE = [
-  ['commence', 'start'],
-  ['initiate', 'start'],
-  ['terminate', 'stop'],
-  ['obtain', 'get'],
-  ['acquire', 'get'],
-  ['demonstrate', 'show'],
-  ['additionally', 'also'],
-  ['furthermore', 'also'],
-  ['moreover', 'also'],
-  ['prior to', 'before'],
-  ['subsequent to', 'after'],
-  ['regarding', 'about'],
-  ['concerning', 'about'],
-  ['with respect to', 'about'],
-  ['in order to', 'to'],
-  ['due to the fact that', 'because'],
-  ['in the event that', 'if'],
-  ['at this point in time', 'now'],
-  ['a number of', 'some'],
-  ['remediate', 'fix'],
-  ['instantiate', 'start'],
-  ['ascertain', 'find out'],
-  ['endeavor', 'try'],
-  ['approximately', 'about'],
-  ['sufficient', 'enough'],
-  ['necessitate', 'need'],
-  ['numerous', 'many'],
-  ['methodolog(y|ies)', 'method'],
-  ['functionality', 'what it does'],
-  ['capabilit(y|ies)', 'what it can do'],
-];
-
-/** Real technical senses exist. Reported, never blocks. */
-const CONTEXTUAL = [
-  ['surface', 'say show or expose, unless you mean an actual surface'],
-  ['orthogonal', 'say unrelated or independent'],
-  ['canonical', 'say the official or standard one'],
-  ['idiomatic', 'say normal for this language'],
-  ['semantics', 'say meaning or behavior'],
-  ['non[- ]trivial', 'say hard, or give the size'],
-  ['delta', 'say difference or change'],
-  ['invariant', 'say the rule that always holds'],
-  ['ergonomics', 'say how it is to use'],
-  ['affordance', 'say what it lets you do'],
-  ['first[- ]class', 'say fully supported'],
-  ['primitive', 'say building block'],
-  ['the crux', 'say the main point'],
-  ['elide', 'say leave out'],
-  ['tractable', 'say solvable'],
-  ['abstraction', 'name the thing it abstracts'],
-];
-
 /** Filler openers and stacked auxiliaries. Both tiers. */
 const FILLER = [
   'it is important to note that',
@@ -130,53 +78,30 @@ const FILLER = [
   'buckle up',
 ];
 
-/** Phrasal verbs with a plain one-word replacement. */
-const PHRASAL = [
-  ['(?:spin|spins|spun|spinning) up', 'start'],
-  ['(?:kick|kicks|kicked|kicking) off', 'start'],
-  ['(?:ramp|ramps|ramped|ramping) up', 'increase'],
-  ['(?:roll|rolls|rolled|rolling) out', 'release'],
-  ['(?:reach|reaches|reached|reaching) out', 'contact'],
-  ['(?:drill|drills|drilled|drilling) down', 'examine'],
-  ['(?:dive|dives|dove|diving) into', 'read'],
-  ['(?:tear|tears|tore|tearing) down', 'remove'],
-  ['(?:bubble|bubbles|bubbled|bubbling) up', 'report'],
-  ['(?:wire|wires|wired|wiring) up', 'connect'],
-];
+/**
+ * Names of the em dash HTML entities, without the leading `&` or trailing
+ * `;`. Held apart like this so the assembled entity text never sits in the
+ * source as a literal string. This rule runs on raw text on purpose, so a
+ * literal entity here would trip the rule against its own definition.
+ */
+const EM_DASH_ENTITY_NAMES = ['mdash', 'emdash', '#8212', '#x2014'];
 
-/** Irregular past participles, for the passive-voice check. */
-const PARTICIPLES = [
-  'read', 'written', 'made', 'sent', 'run', 'built', 'done', 'taken', 'given',
-  'seen', 'held', 'kept', 'left', 'lost', 'met', 'put', 'set', 'shown', 'thrown',
-  'drawn', 'known', 'grown', 'found', 'told', 'brought', 'bought', 'caught',
-  'taught', 'thought', 'understood', 'chosen', 'driven', 'spoken', 'broken',
-  'begun', 'cut', 'split', 'spent', 'dealt', 'meant',
-].join('|');
+function emDashEntityPattern() {
+  const amp = String.fromCharCode(38);
+  const semi = String.fromCharCode(59);
+  return EM_DASH_ENTITY_NAMES.map((name) => `${amp}${name}${semi}`).join('|');
+}
 
-/** Contractions, listed so possessive apostrophes never trip the check. */
-const CONTRACTIONS = [
-  'don', 'doesn', 'didn', 'isn', 'aren', 'wasn', 'weren', 'can', 'won', 'wouldn',
-  'shouldn', 'couldn', 'hasn', 'haven', 'hadn', 'mustn', 'needn', 'ain',
-].map((s) => `${s}'t`).concat([
-  "it's", "that's", "there's", "here's", "what's", "who's", "let's", "he's", "she's",
-  "you're", "we're", "they're", "i'm", "i've", "we've", "you've", "they've",
-  "i'll", "we'll", "you'll", "they'll", "it'll", "he'll", "she'll",
-  "i'd", "we'd", "you'd", "they'd", "it'd", "he'd", "she'd",
-  "y'all", "gonna", "wanna",
-]);
-
-/** Non-ASCII punctuation that has an ASCII equivalent. */
+/**
+ * The em dash, in every spelling that reaches the raw text. This covers the
+ * literal character, the named HTML entity, the same entity misspelled with
+ * a leading e, and both numeric entity forms. The em dash corrupts on this
+ * machine when UTF-8 text gets read back as cp1252. That has already
+ * damaged a repository. Every other non-ASCII punctuation mark reads fine
+ * and stays unchecked.
+ */
 const BAD_PUNCT = [
-  ['\u2014', 'em dash', '-'],
-  ['\u2013', 'en dash', '-'],
-  ['\u201c', 'curly quote', '"'],
-  ['\u201d', 'curly quote', '"'],
-  ['\u2018', 'curly quote', "'"],
-  ['\u2019', 'curly apostrophe', "'"],
-  ['\u2026', 'ellipsis character', '...'],
-  ['\u2192', 'arrow', 'the word to'],
-  ['\u2190', 'arrow', 'the word from'],
-  ['\u21d2', 'arrow', 'the word then'],
+  [new RegExp(`\\u2014|${emDashEntityPattern()}`, 'i'), 'em dash', '-'],
 ];
 
 const ABBREV = new Set([
@@ -403,7 +328,7 @@ function segments(masked, heading) {
  *  e.g. entries joined by a middle dot, a bullet, or a table pipe. */
 const SEPARATOR_CHARS = '\u00b7\u2022|';
 
-function splitSentences(text) {
+export function splitSentences(text) {
   const flat = text.replace(/\n/g, ' ');
   const parts = [];
   let start = 0;
@@ -499,14 +424,10 @@ export function lint(text, options = {}) {
           });
         }
       }
-      scan(block, /;/g, () => ({
+      // An HTML entity ends in a semicolon that closes the entity, not the sentence.
+      // Skip the named form, the decimal numeric form, and the hex numeric form.
+      scan(block, /(?<!&[A-Za-z0-9]{1,31})(?<!&#[0-9]{1,10})(?<!&#[xX][0-9A-Fa-f]{1,8});/g, () => ({
         rule: 'semicolon', sev: 'error', msg: 'no semicolons. Write two sentences.',
-      }), found);
-    }
-
-    for (const c of CONTRACTIONS) {
-      scan(block, wordRe(c.replace(/'/g, "['\u2019]"), false), (m) => ({
-        rule: 'contraction', sev: 'error', msg: `expand "${m[1]}".`,
       }), found);
     }
 
@@ -515,26 +436,9 @@ export function lint(text, options = {}) {
         rule: 'slop-word', sev: 'error', msg: `"${m[1]}" - ${fix}.`,
       }), found);
     }
-    for (const [pat, fix] of PHRASAL) {
-      scan(block, wordRe(pat, false), (m) => ({
-        rule: 'phrasal-verb', sev: 'error', msg: `"${m[1]}" - use "${fix}".`,
-      }), found);
-    }
     for (const pat of FILLER) {
       scan(block, wordRe(pat, false), (m) => ({
         rule: 'filler', sev: 'error', msg: `"${m[1]}" - delete it, state the fact.`,
-      }), found);
-    }
-    if (tier === 'strict') {
-      for (const [pat, fix] of VERBOSE) {
-        scan(block, wordRe(pat), (m) => ({
-          rule: 'long-word', sev: 'error', msg: `"${m[1]}" - use "${fix}".`,
-        }), found);
-      }
-    }
-    for (const [pat, fix] of CONTEXTUAL) {
-      scan(block, wordRe(pat), (m) => ({
-        rule: 'vague-word', sev: 'warn', msg: `"${m[1]}" - ${fix}.`,
       }), found);
     }
 
@@ -542,20 +446,21 @@ export function lint(text, options = {}) {
       rule: 'nominalization', sev: 'error', msg: `"${m[0]}" - use the verb directly.`,
     }), found);
 
-    scan(block, new RegExp(`\\b(is|are|was|were|be|been|being)\\s+(?:\\w+ly\\s+)?(\\w+(?:ed|en)|${PARTICIPLES})\\s+by\\s+(?!now|then|far|default|hand|design)\\b`, 'gi'), (m) => ({
-      rule: 'passive-voice', sev: 'error', msg: `"${m[0].trim()}" - name the actor first, then the verb.`,
-    }), found);
-
     scan(block, /\bthere (is|are|was|were)\s+(a|an|no|some|many|several)\b/gi, (m) => ({
       rule: 'weak-opener', sev: 'warn', msg: `"${m[0]}" - name the subject.`,
     }), found);
+
+    found.push(...hardWordRule(block, tier));
+    found.push(...readabilityRule(block, tier));
+    found.push(...nounStackRule(block, tier));
+    found.push(...clausePileupRule(block, tier));
   }
 
   // Punctuation is checked on the raw text, since code blocks must be clean too.
   const rawLines = text.split('\n');
   for (let i = 0; i < rawLines.length; i++) {
-    for (const [ch, name, fix] of BAD_PUNCT) {
-      if (rawLines[i].includes(ch)) {
+    for (const [re, name, fix] of BAD_PUNCT) {
+      if (re.test(rawLines[i])) {
         found.push({
           line: i + 1, rule: 'punctuation', sev: 'error',
           msg: `${name} is banned on this machine, it corrupts on re-encode. Use ${fix}.`,

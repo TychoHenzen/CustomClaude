@@ -1,17 +1,22 @@
 # ste-lint
 
-A mechanical checker for ASD-STE100 Simplified Technical English. It enforces
-the part of the standard that a machine can decide. It cannot judge whether a
-paragraph is true, or whether a technical noun is the right one. It fixes the
-form of slop. It cannot make a hollow paragraph true.
-
-Standard: https://asd-ste100.org
+A mechanical checker for word readability and sentence structure. It measures
+how rare each word is, how hard each sentence reads as a whole, and how a
+sentence is built. A small vocabulary check survives from the older rule set:
+banned marketing words and one banned punctuation mark. It cannot judge
+whether a paragraph is true, or whether a technical noun is the right one. It
+fixes the form of slop. It cannot make a hollow paragraph true.
 
 ## Files
 
 | Path | Role |
 |------|------|
 | `ste-lint.mjs` | Rules, engine, and command line front end |
+| `rules-readability.mjs` | Hard-word and readability rules |
+| `rules-structure.mjs` | Noun-stack and clause-pileup rules |
+| `readability.mjs` | Scores a block of sentences into a grade level |
+| `word-freq.mjs` | Reads the word frequency table |
+| `build-word-freq.mjs` | Deploy-time fetcher for the word frequency table |
 | `ste-commit-msg.mjs` | Commit message checker, called by the git hook |
 | `~/.claude/hooks/ste-write-guard.mjs` | PostToolUse hook for Write, Edit, MultiEdit |
 | `~/.claude/hooks/ste-reply-guard.mjs` | Stop hook for chat replies |
@@ -30,9 +35,11 @@ Exit code 1 means the file has at least one error-severity violation.
 ## Tiers
 
 - `strict` covers runbooks, procedures, install and security docs, and error
-  messages. Every rule applies. Sentences cap at 20 words.
-- `flavored` covers everything else. Sentences cap at 25 words. The long-word
-  list is skipped, so the text keeps enough range to read naturally.
+  messages. Sentences cap at 20 words. `hard-word` runs at error severity.
+  The readability ceiling is 14.
+- `flavored` covers everything else. Sentences cap at 25 words. `hard-word`
+  runs at warn severity only, so it never blocks on its own. The readability
+  ceiling is 16.5.
 
 The hook picks the tier from the file name. A name that contains `runbook`,
 `procedure`, `install`, `security`, `troubleshoot`, `incident`, `migration`,
@@ -44,22 +51,46 @@ The hook picks the tier from the file name. A name that contains `runbook`,
 |------|----------|--------|
 | `long-sentence` | error | Word count over the tier cap |
 | `semicolon` | error | Any semicolon in prose |
-| `contraction` | error | A known contraction, never a possessive |
-| `slop-word` | error | Marketing adjectives and decorative vocabulary |
-| `long-word` | error | Long word with a short replacement, strict tier only |
-| `filler` | error | Openers such as `it is important to note that` |
-| `phrasal-verb` | error | `spin up`, `roll out`, `wire up`, and others |
-| `nominalization` | error | `perform an analysis of`, and the same shape |
-| `passive-voice` | error | A passive verb with a named actor after `by` |
-| `punctuation` | error | Em dash, en dash, curly quote, ellipsis, arrow |
-| `vague-word` | warn | A word with a real technical sense, so never blocks |
 | `weak-opener` | warn | `there is a`, `there are some` |
+| `slop-word` | error | Marketing adjectives and decorative vocabulary |
+| `filler` | error | Openers such as `it is important to note that` |
+| `nominalization` | error | `perform an analysis of`, and the same shape |
+| `punctuation` | error | The em dash, in every spelling |
+| `hard-word` | error in strict, warn in flavored | A word too rare for the frequency table's floor |
+| `readability` | error | A block scores past the tier's grade ceiling |
+| `noun-stack` | error | A run of content words with no verb, carrying abstract nouns |
+| `clause-pileup` | error | A sentence with too many clause boundaries |
 
 ## What the checker skips
 
 Fenced code, inline code spans, tables, blockquotes, front matter, HTML
 comments, links, bare URLs, file paths, and command flags. In source files it
 reads comments and user-facing message strings only, never the code.
+
+## The word frequency table
+
+`hard-word` and `readability` read word rarity from a table at
+`~/.claude/ste/data/word-freq.txt`. The table comes from the Norvig word
+count list and holds 333,333 entries. It is never committed to this
+repository. `CustomClaude.ps1` calls `build-word-freq.mjs` on every full
+launch and refreshes the table.
+
+On a machine with no table, both rules degrade instead of failing. `hard-word`
+emits nothing, because it has no evidence to flag a word on. `readability`
+falls back to sentence length alone, with no weight for word rarity, and marks
+its result as degraded.
+
+## How the readability score works
+
+`readability` scores a whole block, not one sentence. It groups the block's
+sentences into chunks of about 125 words. It then finds the mean log word
+frequency and the mean log sentence length across the chunks. It turns each
+mean into a z-score against a corpus of 406 blocks measured from this
+repository. It combines the two z-scores into one grade-level number.
+
+The output is a US grade level under the Flesch-Kincaid style scale. It is
+NOT a Lexile L number. A real L number needs a regression against books with
+a published score, and this checker has no such anchor texts.
 
 ## Escape hatches
 
@@ -77,5 +108,5 @@ reads comments and user-facing message strings only, never the code.
 
 The write hook reports only the lines that the tool call wrote. Prose that was
 already in the file never blocks an unrelated edit. The reply hook checks
-vocabulary, filler, punctuation, and passive voice only, so the terse caveman
-reply style keeps working.
+vocabulary, filler, nominalization, punctuation, and hard-word only, so the
+terse caveman reply style keeps working.

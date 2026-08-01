@@ -19,7 +19,7 @@ Do not rewrite the checkers from the rule lists.
 
 Two halves ship together:
 
-- Prose. ASD-STE100 Simplified Technical English, checked by `ste-lint`.
+- Prose. Word `readability` and sentence structure, checked by `ste-lint`.
 - Code. Structural bounds, checked by the `quality-guard` plugin behind a
   ratchet. That half no longer lives here. It ships from the dod-guard
   marketplace and installs with `/plugin`.
@@ -48,9 +48,10 @@ Six more decisions that already cost debugging time:
   block an unrelated edit.
 - A markdown code span may wrap one line. The mask allows one newline inside a
   span. Without that, a rule example trips its own rule.
-- Caveman reply style and Simplified Technical English disagree about articles.
-  The reply hook checks vocabulary, filler, phrasal verbs, nominalizations,
-  contractions and punctuation only. It never checks sentence length on chat.
+- Caveman reply style and the sentence rules disagree about articles. The
+  reply hook checks vocabulary, filler, nominalization, punctuation, and
+  hard-word only. It never checks sentence length or sentence structure on
+  chat. `hard-word` is advisory there. It never blocks a reply on its own.
 - The trailer pattern in the commit checker lists known git trailer keys. A
   pattern such as `^[A-Za-z-]+:` also eats a `feat:` subject line.
 - The code gate is a ratchet, never an absolute bound. An absolute gate blocks
@@ -64,6 +65,11 @@ Six more decisions that already cost debugging time:
 
 1. Copy the tree. Run
    `cp -r enforcement/claude/ste enforcement/claude/hooks enforcement/claude/git-hooks enforcement/claude/lib ~/.claude/`.
+1a. Fetch the word frequency table. `CustomClaude.ps1` already calls
+    `build-word-freq.mjs` on every full launch, so a launcher run needs no
+    extra step. On a machine without the launcher, run
+    `node ~/.claude/ste/build-word-freq.mjs` by hand. Without the table,
+    `hard-word` and `readability` both fall back instead of failing.
 2. Read `~/.claude/CLAUDE.md`. Find the section about plain language or word
    choice, if one exists.
 3. Replace that section with the text in `enforcement/claude/CLAUDE-section.md`.
@@ -144,7 +150,8 @@ printf 'This robust layer was designed by the team to facilitate lookups; it is 
 node ~/.claude/ste/ste-lint.mjs --tier=flavored /tmp/slop.md
 ```
 
-Expect exit code 1 and at least five violations.
+Expect exit code 1 and 4 violations: one `semicolon` hit, and three
+`slop-word` hits, for `robust`, `facilitate`, and `seamless`.
 
 2. Lint the checker itself:
 
@@ -217,7 +224,20 @@ Expect exit code 0.
 11. Confirm the old marker is dead. Put `ste-lint: off` at the top of a bad
     prose file and run the write guard. Expect exit code 2.
 
-12. Delete `/tmp/slop.md`, `/tmp/sterepo` and `/tmp/qrepo`.
+12. Confirm the word frequency table is in place. Run
+    `test -f ~/.claude/ste/data/word-freq.txt && echo present`. Expect
+    `present`. Run `node ~/.claude/ste/ste-lint.mjs --tier=strict
+    ~/.claude/ste/rules-readability.mjs` and confirm the process does not
+    crash.
+
+13. Check the degraded path with the table absent. Run
+    `node --test "enforcement/claude/ste/word-freq.test.mjs"` and confirm
+    every test passes, including the one that checks `hasTable` and
+    `logFrequency` with a missing table file. That test proves `hard-word`
+    emits nothing and `readability` falls back to sentence length alone when
+    the table is not there.
+
+14. Delete `/tmp/slop.md`, `/tmp/sterepo` and `/tmp/qrepo`.
 
 ## Known limits
 
@@ -233,3 +253,7 @@ Expect exit code 0.
 - Escape hatches: a `.prose-skip` sentinel for prose, a `.quality-skip`
   sentinel for code, `STE_LINT=off` in the environment, and
   `git commit --no-verify`. Both sentinels work once and leave a record.
+- The word frequency table comes from a 2006 web crawl. It has no modern
+  software vocabulary. A word absent from the table skips the `hard-word`
+  check. It does not get flagged. A young technical term never blocks a
+  write for that reason.

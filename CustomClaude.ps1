@@ -136,6 +136,28 @@ function Copy-EnforcementTrees {
     return $changed
 }
 
+# The readability scorer needs a word frequency table. This fetches it after
+# the tree copy above, so the deployed script under $ClaudeHome is current
+# before it runs. The fetcher script decides on its own whether its table is
+# current. It never exits non-zero, so a failed or missing download here
+# can never stop the launch.
+function Sync-WordFreqTable {
+    $node = (Get-Command node -ErrorAction SilentlyContinue)
+    if (-not $node) { return 0 }
+    $script = Join-Path $ClaudeHome "ste\build-word-freq.mjs"
+    if (-not (Test-Path $script)) { return 0 }
+
+    $output = & $node.Source $script 2>&1
+    if ($output -match 'wrote word-freq table') {
+        Write-Host "  Enforcement: word-freq table updated." -ForegroundColor Green
+        return 1
+    }
+    if ($output -match 'warning:') {
+        Write-Host "  WARN: word-freq table fetch skipped." -ForegroundColor Yellow
+    }
+    return 0
+}
+
 # The rule text goes in its own file next to CLAUDE.md. CLAUDE.md itself only
 # ever gains one include line, so a hand-written section there is never touched.
 function Write-EnforcementRules {
@@ -281,7 +303,7 @@ function Sync-Enforcement {
         return
     }
     $changed = (Copy-EnforcementTrees) + (Write-EnforcementRules) + (Add-EnforcementInclude)
-    $changed += (Sync-EnforcementHooks) + (Sync-EnforcementGitHooks)
+    $changed += (Sync-EnforcementHooks) + (Sync-EnforcementGitHooks) + (Sync-WordFreqTable)
     Test-EnforcementDuplicateRules
     if ($changed -eq 0) {
         Write-Host "  Enforcement: up to date." -ForegroundColor DarkGray
