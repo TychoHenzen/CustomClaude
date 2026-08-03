@@ -1150,8 +1150,8 @@ if ($selection -ne "0" -and $selection -ne "") {
 # Persist last prompt selection
 if ($chosen) {
     $chosen.BaseName | Out-File -FilePath $lastPromptFile -NoNewline
-} elseif ($selection -eq "0") {
-    Remove-Item $lastPromptFile -ErrorAction SilentlyContinue
+} elseif ($selection -eq "0" -and (Test-Path $lastPromptFile)) {
+    Remove-Item $lastPromptFile -Force -ErrorAction SilentlyContinue
 }
 
 # =============================================================================
