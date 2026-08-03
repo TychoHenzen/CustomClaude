@@ -49,8 +49,15 @@ git clone https://github.com/TychoHenzen/CustomClaude.git C:\Tools\CustomClaude
 # Add C:\Tools\CustomClaude to your user PATH
 ```
 
-The working tree IS the install. `CustomClaude.cmd` self-updates by fetching
-and resetting the repo on each launch.
+### Updating
+
+Run `Install.ps1` once, on a machine that has no copy yet. Never run it to pick
+up a change.
+
+The working tree IS the install. `CustomClaude.cmd` fetches origin and resets
+the tree on every launch, before it hands off to the PowerShell script. So a
+pushed commit reaches every machine the next time someone starts CustomClaude.
+To deploy a fix, push it and launch.
 
 ## Configuration
 

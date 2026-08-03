@@ -50,6 +50,20 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 #
 # Clear the lock, because the lock is the fault. Report anything else in full.
 
+# Delete one file without going through the PowerShell provider.
+#
+# Remove-Item resolves its path through that provider, and the provider throws
+# on some machines instead of writing an error. One case is a home folder named
+# by its short 8.3 alias on a volume that no longer creates short names. A throw
+# is not a written error, so -ErrorAction SilentlyContinue cannot quiet it, and
+# the launch dies on a cache file nobody needs. The .NET call takes the absolute
+# path as given. It also treats a missing file as work already done.
+function Remove-StateFile {
+    param([string]$Path)
+    if (-not $Path) { return }
+    try { [System.IO.File]::Delete($Path) } catch { }
+}
+
 # Remove a lock no live git holds. These commands finish in well under a second,
 # so a lock older than the threshold belongs to a process that is gone.
 function Remove-StaleGitLock {
@@ -59,7 +73,7 @@ function Remove-StaleGitLock {
     if (-not (Test-Path $lock)) { return $false }
     $age = (Get-Date) - (Get-Item $lock).LastWriteTime
     if ($age.TotalSeconds -lt $MinAgeSeconds) { return $false }
-    Remove-Item $lock -Force -ErrorAction SilentlyContinue
+    Remove-StateFile $lock
     return -not (Test-Path $lock)
 }
 
@@ -716,8 +730,7 @@ if ($targetVer -and $currentVer -ne $targetVer) {
 
     # Nuke tweakcc backup files so --apply creates a fresh backup from stock binary
     @("native-binary.backup", "native-claudejs-orig.js", "native-claudejs-patched.js") | ForEach-Object {
-        $f = Join-Path $TweakccDir $_
-        if (Test-Path $f) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
+        Remove-StateFile (Join-Path $TweakccDir $_)
     }
     Write-Host "  Cleared tweakcc backup files (fresh slate)." -ForegroundColor DarkGray
 }
@@ -1150,8 +1163,8 @@ if ($selection -ne "0" -and $selection -ne "") {
 # Persist last prompt selection
 if ($chosen) {
     $chosen.BaseName | Out-File -FilePath $lastPromptFile -NoNewline
-} elseif ($selection -eq "0" -and (Test-Path $lastPromptFile)) {
-    Remove-Item $lastPromptFile -Force -ErrorAction SilentlyContinue
+} elseif ($selection -eq "0") {
+    Remove-StateFile $lastPromptFile
 }
 
 # =============================================================================
@@ -1250,7 +1263,7 @@ try {
                     try {
                         $proxyPid = [int](Get-Content $pidFile -Raw)
                         (Get-Process -Id $proxyPid -ErrorAction Stop).Kill()
-                        Remove-Item $pidFile -ErrorAction SilentlyContinue
+                        Remove-StateFile $pidFile
                         Write-Host " done" -ForegroundColor DarkGray
                     } catch { Write-Host " (stopped)" -ForegroundColor DarkGray }
                 }
