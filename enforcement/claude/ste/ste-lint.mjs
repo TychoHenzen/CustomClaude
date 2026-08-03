@@ -25,6 +25,7 @@ import { readFileSync } from 'node:fs';
 import { basename, extname, sep } from 'node:path';
 import { hardWordRule, readabilityRule } from './rules-readability.mjs';
 import { nounStackRule, clausePileupRule } from './rules-structure.mjs';
+import { detectEnglish } from './language.mjs';
 
 // ---------------------------------------------------------------------------
 // Dictionaries
@@ -410,7 +411,16 @@ export function lint(text, options = {}) {
     ? extractComments(text, options.ext || '.js')
     : maskMarkdown(text);
 
+  // Every vocabulary rule below is English by construction, so running one on
+  // another language flags every ordinary word. A block too short to judge
+  // falls back to the language of the whole file. See language.mjs.
+  const fileLanguage = detectEnglish(masked);
+
   for (const block of segments(masked, heading)) {
+    const blockLanguage = detectEnglish(block.text);
+    const language = blockLanguage === 'unknown' ? fileLanguage : blockLanguage;
+    const english = language !== 'foreign';
+
     if (!block.heading) {
       for (const s of splitSentences(block.text)) {
         const n = countWords(s.text);
@@ -430,6 +440,8 @@ export function lint(text, options = {}) {
         rule: 'semicolon', sev: 'error', msg: 'no semicolons. Write two sentences.',
       }), found);
     }
+
+    if (!english) continue;
 
     for (const [pat, fix] of SLOP) {
       scan(block, wordRe(pat), (m) => ({

@@ -1,135 +1,35 @@
 #!/usr/bin/env node
 /**
- * PostToolUse hook. Lints prose written by Write, Edit or MultiEdit.
+ * PostToolUse hook. Records the prose file a tool call wrote, then exits 0.
  *
- * Exit 0  - clean, exempt, waived, or the file is not a prose target.
- * Exit 2  - error-severity violations. stderr goes back to the model as feedback.
+ * This used to lint and block right here. That fired once per tool call, and a
+ * turn holds dozens of them, so the model paid a full round trip for each
+ * single violation. Six of every ten blocks reported exactly one problem.
  *
- * A `.prose-skip` sentinel waives one blocked write. See ../ste/sentinel.mjs.
- * There is no in-band marker. A bypass has to be out-of-band, one shot, and
- * recorded, or the thing being checked can simply switch the check off.
- *
- * The hook never blocks on its own failure. Any internal error exits 0.
+ * The check now runs in ste-turn-guard.mjs, once, when the turn ends. This
+ * hook only writes down what to check. It never blocks, and it never lints.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { lint, classify, format } from '../ste/ste-lint.mjs';
-import { changedRanges } from '../lib/changed-lines.mjs';
-import { addExemption, deleteSentinel, isExempt, readSentinel, recordConsumption } from '../ste/sentinel.mjs';
+import { readFileSync } from 'node:fs';
+import { classify } from '../ste/ste-lint.mjs';
+import { addedText } from '../lib/changed-lines.mjs';
+import { append } from '../ste/pending.mjs';
 
-const MAX_BYTES = 400_000;
-const MAX_REPORTED = 25;
-
-function readStdin() {
-  try {
-    return JSON.parse(readFileSync(0, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-/** Nearest ancestor holding a .git entry, or the file directory. */
-function findRepoRoot(filePath) {
-  let dir = dirname(resolve(filePath));
-  for (let depth = 0; depth < 40; depth++) {
-    if (existsSync(join(dir, '.git'))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return dirname(resolve(filePath));
-}
-
-function relFor(repoRoot, filePath) {
-  return relative(repoRoot, resolve(filePath)).split('\\').join('/');
-}
-
-/**
- * Honour a sentinel. A plain one waives this write only. `{"exempt": true}`
- * also records the file so later writes skip the check.
- */
-export function waive(repoRoot, relPath, reasons) {
-  const sentinel = readSentinel(repoRoot);
-  if (!sentinel) return false;
-  if (sentinel.exempt) addExemption(repoRoot, relPath);
-  recordConsumption(repoRoot, { file: relPath, reasons, exempt: sentinel.exempt });
-  deleteSentinel(repoRoot);
-  return true;
-}
-
-/** The prose target this call wrote, or null when there is nothing to check. */
-function target(input) {
-  const tool = input.tool_name || '';
-  if (!/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) return null;
-
-  const path = input.tool_input?.file_path || input.tool_input?.notebook_path;
-  const info = classify(path);
-  if (!info.kind) return null;
-
-  let text;
-  try {
-    text = readFileSync(path, 'utf8');
-  } catch {
-    return null;
-  }
-  if (text.length > MAX_BYTES) return null;
-  return { path, info, text };
-}
-
-/**
- * Lint the whole file, so fences and front matter are read correctly, then
- * keep only the lines this tool call wrote. Prose the user already had must
- * never block an unrelated edit.
- */
-function blockingErrors(input, { info, text }) {
-  const ranges = changedRanges(input, text);
-  return lint(text, { tier: info.tier, kind: info.kind, ext: info.ext })
-    .filter((v) => v.sev === 'error')
-    .filter((v) => ranges.some((r) => v.line >= r.from && v.line <= r.to));
-}
+const WRITERS = /^(Write|Edit|MultiEdit|NotebookEdit)$/;
 
 function main() {
-  const input = readStdin();
-  if (!input) process.exit(0);
+  const input = JSON.parse(readFileSync(0, 'utf8'));
+  if (!WRITERS.test(input?.tool_name || '')) return;
 
-  const found = target(input);
-  if (!found) process.exit(0);
-  const { path, info } = found;
+  const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
+  if (!file || !classify(file).kind) return;
 
-  const repoRoot = findRepoRoot(path);
-  const relPath = relFor(repoRoot, path);
-  if (isExempt(repoRoot, relPath)) process.exit(0);
-
-  const errors = blockingErrors(input, found);
-  if (!errors.length) process.exit(0);
-
-  const shown = errors.slice(0, MAX_REPORTED);
-  const extra = errors.length - shown.length;
-  const detail = format(shown, path);
-  if (waive(repoRoot, relPath, [detail])) process.exit(0);
-
-  const lines = [
-    `ste-lint blocked this write. ${errors.length} rule violations in ${path} (tier: ${info.tier}).`,
-    '',
-    detail,
-    extra > 0 ? `... and ${extra} more.` : '',
-    '',
-    'Fix the prose, then write the file again. Use short common words. Write one',
-    'instruction per sentence. Use no semicolons and no em dash, in any spelling.',
-    'The checker also scores word frequency and sentence structure, so keep words',
-    'plain and sentences short and direct.',
-    'This checks prose only. Code, identifiers and command syntax are exempt.',
-    'To waive this once: touch .prose-skip',
-    'To exempt the whole file: echo \'{"exempt": true}\' > .prose-skip',
-    'Both are recorded, and the commit hook asks you to sign off on them.',
-  ];
-  process.stderr.write(`${lines.filter(Boolean).join('\n')}\n`);
-  process.exit(2);
+  append(input.session_id, { file, adds: addedText(input) });
 }
 
 try {
   main();
 } catch {
-  process.exit(0);
+  // The turn must finish even when the log cannot be written.
 }
+process.exit(0);

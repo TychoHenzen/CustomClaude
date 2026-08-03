@@ -16,9 +16,8 @@
  * The hook never blocks on its own failure. Any internal error exits 0.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { unacknowledged } from '../ste/sentinel.mjs';
+import { readFileSync } from 'node:fs';
+import { repoRootFor, unacknowledged } from '../ste/sentinel.mjs';
 
 function readStdin() {
   try {
@@ -26,18 +25,6 @@ function readStdin() {
   } catch {
     return null;
   }
-}
-
-/** Nearest ancestor holding a .git entry, or the start directory. */
-function findRepoRoot(startDir) {
-  let dir = resolve(startDir);
-  for (let depth = 0; depth < 40; depth++) {
-    if (existsSync(join(dir, '.git'))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return resolve(startDir);
 }
 
 /**
@@ -150,7 +137,7 @@ export function evaluate(input) {
   try {
     if (!input || input.tool_name !== 'Bash') return { block: false, records: [] };
     const command = input.tool_input?.command;
-    const repoRoot = findRepoRoot(input.cwd || process.cwd());
+    const repoRoot = repoRootFor(input.cwd || process.cwd());
     const records = blockingRecords(repoRoot, command);
     return { block: records.length > 0, records };
   } catch {

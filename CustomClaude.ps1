@@ -271,6 +271,7 @@ function Sync-EnforcementHooks {
 
     $wanted = @(
         @{ Event = "PostToolUse"; Matcher = "Write|Edit|MultiEdit|NotebookEdit"; Script = "hooks/ste-write-guard.mjs";  Timeout = 15 },
+        @{ Event = "Stop";        Matcher = "";                                  Script = "hooks/ste-turn-guard.mjs";   Timeout = 20 },
         @{ Event = "Stop";        Matcher = "";                                  Script = "hooks/ste-reply-guard.mjs";  Timeout = 10 },
         @{ Event = "PreToolUse";  Matcher = "Bash";                              Script = "hooks/ste-commit-gate.mjs";  Timeout = 10 }
     )

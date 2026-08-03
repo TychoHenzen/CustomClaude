@@ -20,7 +20,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 export const SENTINEL_NAME = '.prose-skip';
 export const SKIP_LOG = join('.github', 'quality', 'prose-skip-log.json');
@@ -42,6 +42,23 @@ function writeJson(path, value) {
   } catch {
     // A read-only tree must not break the write that already happened.
   }
+}
+
+/** Nearest ancestor holding a .git entry, or the start directory itself. */
+export function repoRootFor(startDir) {
+  let dir = resolve(startDir);
+  for (let depth = 0; depth < 40; depth++) {
+    if (existsSync(join(dir, '.git'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return resolve(startDir);
+}
+
+/** A path relative to its repository root, with forward slashes. */
+export function relPathIn(repoRoot, filePath) {
+  return relative(repoRoot, resolve(filePath)).split('\\').join('/');
 }
 
 /**

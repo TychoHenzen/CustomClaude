@@ -63,15 +63,21 @@ warning that never blocks alone.
 Not for marketing copy or essays. These rules trade voice for clarity on
 purpose.
 
-`ste-lint` enforces the machine-checkable part on every file write, every
-commit message, and every chat reply. Run it directly:
+`ste-lint` enforces the machine-checkable part on commit messages, chat
+replies, and every prose file a turn writes. Run it directly:
 
 ```bash
 node ~/.claude/ste/ste-lint.mjs --tier=strict path/to/file.md
 ```
 
+File checks run once, at the end of the turn, over every file the turn wrote.
+A single write is never blocked on its own. Each file may gain up to three new
+violations and still pass. Encoding characters get no budget, because they
+corrupt the file when it is read back. The report also names problems the turn
+did not create, so you can fix what is worth fixing.
+
 Blocked and sure the prose is right? Run `touch .prose-skip` to waive the next
-write. Run `echo '{"exempt": true}' > .prose-skip` to exempt the whole file.
+turn. Run `echo '{"exempt": true}' > .prose-skip` to exempt the whole file.
 Both work once, delete the sentinel, and leave a record the commit hook asks
 you to sign off. There is no marker you can put inside the file itself.
 

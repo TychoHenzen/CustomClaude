@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 
 import { setTablePath } from './word-freq.mjs';
+import { HARD_WORD_THRESHOLD, baseWordForms } from './word-forms.mjs';
 import {
-  hardWordRule, HARD_WORD_THRESHOLD, baseWordForms,
+  hardWordRule,
   readabilityRule, READABILITY_CEILING_STRICT, READABILITY_CEILING_FLAVORED,
 } from './rules-readability.mjs';
 import { textMeasure } from './readability.mjs';
@@ -392,12 +394,17 @@ test('the tier controls the ceiling used for readability', () => {
   });
 });
 
+// Resolved from this file, not from the working directory. A cwd-relative
+// path made both tests below skip in silence whenever the runner started
+// anywhere but the repository root.
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
 const REPO_PROSE_FILES = [
-  join(process.cwd(), 'README.md'),
-  join(process.cwd(), 'enforcement', 'claude', 'ste', 'README.md'),
-  join(process.cwd(), 'enforcement', 'INSTALL-PROMPT.md'),
-  join(process.cwd(), 'enforcement', 'claude', 'CLAUDE-section.md'),
-  join(process.cwd(), 'enforcement', 'claude', 'CLAUDE-code-section.md'),
+  join(REPO_ROOT, 'README.md'),
+  join(REPO_ROOT, 'enforcement', 'claude', 'ste', 'README.md'),
+  join(REPO_ROOT, 'enforcement', 'INSTALL-PROMPT.md'),
+  join(REPO_ROOT, 'enforcement', 'claude', 'CLAUDE-section.md'),
+  join(REPO_ROOT, 'enforcement', 'claude', 'CLAUDE-code-section.md'),
 ].filter(existsSync);
 
 test('real table: this repository\'s own prose produces no readability violation', { skip: !existsSync(REAL_TABLE_PATH) || REPO_PROSE_FILES.length === 0 }, () => {

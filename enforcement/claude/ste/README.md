@@ -15,10 +15,14 @@ fixes the form of slop. It cannot make a hollow paragraph true.
 | `rules-readability.mjs` | Hard-word and readability rules |
 | `rules-structure.mjs` | Noun-stack and clause-pileup rules |
 | `readability.mjs` | Scores a block of sentences into a grade level |
+| `language.mjs` | Decides whether a block is English, so English-only rules stay off other languages |
+| `word-forms.mjs` | Guesses base word forms and looks up how common they are |
 | `word-freq.mjs` | Reads the word frequency table |
 | `build-word-freq.mjs` | Deploy-time fetcher for the word frequency table |
+| `pending.mjs` | Per-session log of the prose files a turn wrote |
 | `ste-commit-msg.mjs` | Commit message checker, called by the git hook |
-| `~/.claude/hooks/ste-write-guard.mjs` | PostToolUse hook for Write, Edit, MultiEdit |
+| `~/.claude/hooks/ste-write-guard.mjs` | PostToolUse hook, records what a turn wrote |
+| `~/.claude/hooks/ste-turn-guard.mjs` | Stop hook, checks those files once per turn |
 | `~/.claude/hooks/ste-reply-guard.mjs` | Stop hook for chat replies |
 | `~/.claude/git-hooks/commit-msg` | Global git hook, installed by `core.hooksPath` |
 
