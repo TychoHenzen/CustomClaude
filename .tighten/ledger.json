@@ -1,0 +1,540 @@
+{
+  "version": 1,
+  "since": "6 months ago",
+  "seeded": "2026-08-04T08:20:14.128Z",
+  "entries": [
+    {
+      "file": "enforcement/claude/ste/ste-lint.mjs",
+      "score": 55,
+      "rules": {
+        "file-length": 1,
+        "complexity": 8,
+        "function-length": 5,
+        "line-length": 34,
+        "nesting-depth": 1,
+        "param-count": 1,
+        "else-branch": 5
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 55
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/language.mjs",
+      "score": 23.75,
+      "rules": {
+        "dead-export": 4,
+        "test-only-export": 3,
+        "file-length": 1,
+        "line-length": 1
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 23.75
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/rules-structure.mjs",
+      "score": 23.75,
+      "rules": {
+        "dead-export": 3,
+        "file-length": 1,
+        "complexity": 3,
+        "line-length": 3
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 23.75
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/hooks/ste-commit-gate.mjs",
+      "score": 22.5,
+      "rules": {
+        "test-only-export": 3,
+        "file-length": 1,
+        "complexity": 3,
+        "function-length": 1,
+        "line-length": 4
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 22.5
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/build-word-freq.mjs",
+      "score": 22.5,
+      "rules": {
+        "dead-export": 2,
+        "test-only-export": 5,
+        "file-length": 1,
+        "else-branch": 1,
+        "line-length": 3
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 22.5
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/sentinel.mjs",
+      "score": 20,
+      "rules": {
+        "dead-export": 3,
+        "file-length": 1,
+        "line-length": 2
+      },
+      "churn": {
+        "returns": 1,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 20
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/readability.mjs",
+      "score": 16.25,
+      "rules": {
+        "dead-export": 2,
+        "test-only-export": 2,
+        "file-length": 1,
+        "function-length": 1,
+        "line-length": 1
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 16.25
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/hooks/ste-reply-guard.mjs",
+      "score": 16,
+      "rules": {
+        "complexity": 2,
+        "function-length": 1,
+        "line-length": 5
+      },
+      "churn": {
+        "returns": 1,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 16
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/rules-readability.mjs",
+      "score": 13.75,
+      "rules": {
+        "test-only-export": 2,
+        "file-length": 1,
+        "complexity": 2,
+        "line-length": 8
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 13.75
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/rules-readability.test.mjs",
+      "score": 13,
+      "rules": {
+        "duplicate-block": 4,
+        "file-length": 1,
+        "line-length": 77
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 13
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/readability.test.mjs",
+      "score": 10,
+      "rules": {
+        "duplicate-block": 3,
+        "line-length": 13,
+        "file-length": 1
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 10
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/pending.mjs",
+      "score": 6.25,
+      "rules": {
+        "test-only-export": 1,
+        "complexity": 1,
+        "line-length": 1
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 6.25
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/lib/changed-lines.mjs",
+      "score": 6,
+      "rules": {
+        "complexity": 1,
+        "line-length": 1
+      },
+      "churn": {
+        "returns": 1,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 6
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/ste-commit-msg.mjs",
+      "score": 5,
+      "rules": {
+        "complexity": 1,
+        "line-length": 3,
+        "function-length": 1
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 5
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/word-forms.mjs",
+      "score": 5,
+      "rules": {
+        "test-only-export": 1,
+        "complexity": 1,
+        "line-length": 2
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 5
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/word-freq.mjs",
+      "score": 5,
+      "rules": {
+        "test-only-export": 1,
+        "file-length": 1,
+        "else-branch": 1,
+        "line-length": 1
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 5
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/hooks/ste-turn-guard.mjs",
+      "score": 3.75,
+      "rules": {
+        "test-only-export": 1,
+        "file-length": 1,
+        "line-length": 6
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": true,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 3.75
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/hooks/ste-write-guard.mjs",
+      "score": 3,
+      "rules": {
+        "complexity": 1
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 3
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/check-skips.mjs",
+      "score": 3,
+      "rules": {
+        "dead-export": 1,
+        "line-length": 2
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 3
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/build-word-freq.test.mjs",
+      "score": 1,
+      "rules": {
+        "file-length": 1,
+        "line-length": 2
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 1
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/language.test.mjs",
+      "score": 1,
+      "rules": {
+        "line-length": 13,
+        "file-length": 1
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 1
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/rules-structure.test.mjs",
+      "score": 1,
+      "rules": {
+        "file-length": 1,
+        "line-length": 13
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 1
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/ste-lint.test.mjs",
+      "score": 1,
+      "rules": {
+        "file-length": 1,
+        "line-length": 19
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 1
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    },
+    {
+      "file": "enforcement/claude/ste/word-freq.test.mjs",
+      "score": 1,
+      "rules": {
+        "line-length": 6,
+        "file-length": 1
+      },
+      "churn": {
+        "returns": 0,
+        "fixReturns": 0
+      },
+      "hasOracle": false,
+      "status": "pending",
+      "attempts": 0,
+      "before": {
+        "score": 1
+      },
+      "after": null,
+      "commit": null,
+      "reason": null
+    }
+  ]
+}
