@@ -4,9 +4,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { setTablePath } from './word-freq.mjs';
-import {
-  detectEnglish, isEnglish, englishFunctionWordRatio, rareWordShare,
-} from './language.mjs';
+import { detectEnglish } from './language.mjs';
 import { lint } from './ste-lint.mjs';
 
 const REAL_TABLE_PATH = join(process.env.USERPROFILE || process.env.HOME || '', '.claude', 'ste', 'data', 'word-freq.txt');
@@ -29,38 +27,6 @@ const GERMAN = 'Der Parser liest die Datei und schreibt das Ergebnis auf die '
 const SPANISH = 'El analizador lee el archivo y escribe el resultado en el '
   + 'disco. Cada linea sigue el mismo camino. Cuando el archivo no existe, el '
   + 'programa termina con un error claro y no escribe nada.';
-
-// ---------------------------------------------------------------------------
-// Signals
-// ---------------------------------------------------------------------------
-
-test('the function word ratio counts hits against every word token', () => {
-  assert.equal(englishFunctionWordRatio('the of and zzz'), 0.75);
-});
-
-test('the function word ratio of text with no word is zero', () => {
-  assert.equal(englishFunctionWordRatio('123 -- ...'), 0);
-});
-
-test('the function word ratio reads English well above foreign text', () => {
-  assert.ok(englishFunctionWordRatio(ENGLISH) > 0.2);
-  assert.equal(englishFunctionWordRatio(PORTUGUESE), 0);
-  assert.equal(englishFunctionWordRatio(GERMAN), 0);
-});
-
-test('the rare word share leaves out words the table never held', needsTable, () => {
-  const { known } = rareWordShare('tweakcc unnerfcc customclaude');
-  assert.equal(known, 0);
-});
-
-test('the rare word share is null when no word is known', needsTable, () => {
-  assert.equal(rareWordShare('tweakcc unnerfcc').share, null);
-});
-
-test('foreign prose scores a far higher rare word share than English', needsTable, () => {
-  assert.ok(rareWordShare(ENGLISH).share < 0.3);
-  assert.ok(rareWordShare(PORTUGUESE).share > 0.5);
-});
 
 // ---------------------------------------------------------------------------
 // Verdicts
@@ -86,13 +52,17 @@ test('a list of product names reads as unknown, not foreign', needsTable, () => 
   assert.notEqual(detectEnglish(names), 'foreign');
 });
 
-test('isEnglish treats unknown as English, so evidence alone turns rules off', () => {
-  assert.equal(isEnglish('Notas de instalacao'), true);
+test('a block of unknown product names reads as unknown, whatever its length', needsTable, () => {
+  const names = 'tweakcc unnerfcc customclaude tweakcc unnerfcc customclaude '
+    + 'tweakcc unnerfcc customclaude tweakcc unnerfcc customclaude';
+  assert.equal(detectEnglish(names), 'unknown');
 });
 
-test('isEnglish is false only for text read as foreign', needsTable, () => {
-  assert.equal(isEnglish(PORTUGUESE), false);
-  assert.equal(isEnglish(ENGLISH), true);
+test('English prose carrying no function word still reads as English', needsTable, () => {
+  const terse = 'Parser reads file, writes result, closes handle. Message '
+    + 'shows clear reason. Program stops. Line takes same path. Missing file '
+    + 'means error.';
+  assert.equal(detectEnglish(terse), 'english');
 });
 
 // ---------------------------------------------------------------------------
