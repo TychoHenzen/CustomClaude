@@ -45,13 +45,15 @@
         "fixReturns": 0
       },
       "hasOracle": true,
-      "status": "pending",
-      "attempts": 0,
+      "status": "accepted",
+      "attempts": 1,
       "before": {
         "score": 23.75
       },
-      "after": null,
-      "commit": null,
+      "after": {
+        "score": 4
+      },
+      "commit": "553b495",
       "reason": null
     },
     {
