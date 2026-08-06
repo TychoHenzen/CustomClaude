@@ -5,6 +5,8 @@ backends.json
 .cache/
 tweakcc-presets/
 enforcement/claude/ste/data/
+# Run state written by the dod-guard tighten skill
+.tighten/
 
 # Editor
 *.swp
