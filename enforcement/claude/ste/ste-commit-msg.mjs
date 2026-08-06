@@ -4,7 +4,8 @@
  *
  * The subject line keeps its own rules: it is a fragment, so sentence length
  * and semicolon checks do not apply to it. The body is flavored-tier prose.
- * Comment lines, trailers, and generated merge or revert messages are skipped.
+ * Comment lines, trailers, change tags, and generated merge or revert
+ * messages are skipped.
  *
  * Exit 1 rejects the commit.
  */
@@ -17,6 +18,19 @@ const SKIP_SUBJECT = /^(Merge|Revert|fixup!|squash!|Applying|Rebase)/;
 // Known git trailer keys only. A pattern like /^[A-Za-z-]+:/ would also eat
 // conventional-commit subjects such as "feat: ...".
 const TRAILER = /^(Co-Authored-By|Signed-off-by|Change-Id|Reviewed-by|Acked-by|Tested-by|Refs|Closes|Fixes|Resolves|BREAKING[- ]CHANGE|See-also|Cc):/i;
+// A body bullet may open with a short capital tag naming the kind of change:
+// "- ADD: ...", "- CHG: ...", "- REM: ...". The tag labels the bullet, it is
+// not part of the sentence, so the acronym rule has nothing to ask for here.
+const CHANGE_TAG = /^(\s*[-*]\s*)([A-Z][A-Z0-9]{1,5}:)(\s)/;
+
+/**
+ * Body line with its leading change tag replaced by spaces. The blanking
+ * keeps every later column where it was, so reported line and column numbers
+ * still point at the real text.
+ */
+export function stripChangeTag(line) {
+  return line.replace(CHANGE_TAG, (_, lead, tag, tail) => lead + ' '.repeat(tag.length) + tail);
+}
 
 function main() {
   const path = process.argv[2];
@@ -36,7 +50,9 @@ function main() {
   if (!subject || SKIP_SUBJECT.test(subject)) process.exit(0);
 
   const subjectIndex = kept.findIndex((l) => l.trim());
-  const body = kept.map((l, i) => (i <= subjectIndex ? '' : l)).join('\n');
+  const body = kept
+    .map((l, i) => (i <= subjectIndex ? '' : stripChangeTag(l)))
+    .join('\n');
 
   const problems = [];
   if (subject.length > SUBJECT_MAX) {
@@ -60,8 +76,10 @@ function main() {
   process.exit(1);
 }
 
-try {
-  main();
-} catch {
-  process.exit(0);
+if (process.argv[1]?.endsWith('ste-commit-msg.mjs')) {
+  try {
+    main();
+  } catch {
+    process.exit(0);
+  }
 }
