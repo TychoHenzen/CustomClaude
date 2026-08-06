@@ -27,8 +27,9 @@ Use `CustomClaude -q` to skip the pickers and reuse the last selection.
 The `enforcement/` directory carries writing and code structure guards that
 deploy into `~/.claude/` on each launch:
 
-- **ste-lint** - ASD-STE100 Simplified Technical English linter. Runs on every
-  file write and on every chat reply via Claude Code hooks.
+- **ste-lint** - a linter for ASD-STE100 (the aerospace industry standard for
+  Simplified Technical English). Runs on every file write and on every chat
+  reply via Claude Code hooks.
 - **quality-guard** - structural code scanner (line length, function size,
   complexity, nesting depth). Uses a ratchet: old debt never blocks, new debt
   always blocks. Baseline stored in `.quality-baseline.json`.

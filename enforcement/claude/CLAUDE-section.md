@@ -18,11 +18,18 @@ wrote.
 
 WORDS
 - One name for one thing. Do not rename the same item mid-document.
-- The checker scores each word against a frequency table. Prefer the commoner
-  word: `use` not `utilize` or `leverage`, `fix` not `remediate`, `help` not
-  `facilitate`, `about` not `regarding`, `also` not `additionally`.
+- The checker scores each word against a frequency table, then against the
+  words this project already uses. Prefer the commoner word: `use` not
+  `utilize` or `leverage`, `fix` not `remediate`, `help` not `facilitate`,
+  `about` not `regarding`, `also` not `additionally`.
 - Keep exact technical terms: API names, CLI flags, file paths, error strings,
   language names, protocol names. Those are precise.
+- Spell an acronym out the first time you write it, or put its meaning in
+  brackets right after it. Write `a linter for ASD-STE100 (the aerospace
+  writing standard)`. Widely known ones such as `API`, `HTTP` and `CLI` need
+  no expansion. Neither does a term this project already writes across two
+  files or more, because that is a name rather than an abbreviation. The
+  checker flags the rest.
 - No marketing adjectives: `seamless`, `robust`, `powerful`, `comprehensive`,
   `cutting-edge`, `world-class`, `next-generation`, `effortless`.
 - One term needs one meaning. `fall` means to move down, not to decrease.
@@ -31,8 +38,8 @@ WORDS
 
 VERBS
 - Active voice reads easier. Name the actor, then the verb. Write `the parser
-  reads the file`, not `the file is read by the parser`. This is advice, not
-  a checked rule. The checker does not flag the passive voice.
+  reads the file`, not `the file is read by the parser`. One passive on its
+  own never blocks. It counts toward the sentence shape check below.
 - Use a verb for an action. Write `analyze the log`, not `perform an analysis
   of the log`. The checker flags this shape.
 - No stacked auxiliaries. Cut filler openers such as `it is important to note
@@ -48,6 +55,12 @@ SENTENCES
   order divergence`. Say `the two paths read config in a different order`.
   The checker flags a stack of four or more content words that carries two or
   more abstract nouns.
+- Keep the subject next to its verb. Do not hold an opening word open across a
+  whole clause. Not `How should a HELM answer that disclaims knowledge be
+  allowed to name the thing it disclaims?`. Say `A HELM answer disclaims
+  knowledge. May it name what it disclaims?`. The checker counts three kinds
+  of strain. An auxiliary sits more than four words from its verb. A clause
+  is wedged between the two. The voice is passive. Three at once fails.
 
 STRUCTURE
 - One topic per paragraph, six sentences at most.
@@ -55,10 +68,15 @@ STRUCTURE
 - Put a condition before its command.
 
 Two tiers. Strict covers runbooks, procedures, install and security docs, and
-error messages. It uses a 20-word cap, a tighter readability ceiling, and the
-rare-word check at error severity. Flavored covers everything else. It uses a
-25-word cap, a looser readability ceiling, and the rare-word check as a
-warning that never blocks alone.
+error messages. It uses a 20-word cap and a tighter readability ceiling.
+Flavored covers everything else. It uses a 25-word cap and a looser ceiling.
+
+The rare-word check is advice in both tiers and never blocks. It asks two
+questions before it speaks. Is the word rare in general English? Does this
+project already use it? A word the project writes in two files, or five times
+over, is never flagged. So a precise term stays precise. The research is
+clear. Swapping technical words for plainer ones measures easier and reads
+worse.
 
 Not for marketing copy or essays. These rules trade voice for clarity on
 purpose.

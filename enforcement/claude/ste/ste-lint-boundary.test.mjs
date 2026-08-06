@@ -1,17 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import {
   classify, format, isDisabled, lint, splitSentences,
 } from './ste-lint.mjs';
+import { setCorpusRoot } from './local-corpus.mjs';
 import { runCli } from './ste-cli.mjs';
 
 const HOME = process.env.USERPROFILE || process.env.HOME || '';
 const REAL_TABLE_PATH = join(HOME, '.claude', 'ste', 'data', 'word-freq.txt');
 const needsTable = { skip: !existsSync(REAL_TABLE_PATH) };
+
+// The hard-word rule asks the local corpus whether this project already uses
+// a word. These tests use a rare word as a probe for masking, so the corpus
+// has to be empty or the probe would vote for itself.
+setCorpusRoot(mkdtempSync(join(tmpdir(), 'ste-boundary-corpus-')));
 
 // ---------------------------------------------------------------------------
 // classify
@@ -195,11 +202,11 @@ test('the words of a heading still feed the vocabulary rules', () => {
 });
 
 test('a heading reaches the word rarity rule, its marker being blanked', needsTable, () => {
-  const found = lint('# Tunable Dev System-Prompt Basis\n', { tier: 'flavored' });
+  const found = lint('# Hermeneutic Dev System-Prompt Basis\n', { tier: 'flavored' });
   assert.equal(found.length, 1);
   assert.equal(found[0].line, 1);
   assert.equal(found[0].rule, 'hard-word');
-  assert.match(found[0].msg, /Tunable/);
+  assert.match(found[0].msg, /Hermeneutic/);
 });
 
 const HEADING_THEN_TEXT = '### Determinism\n'
@@ -284,7 +291,9 @@ const ITEM_THREE = `- Public/known agent prompts ${DASH} **fetch real ones** `
 
 test('a sentence ends where its list item ends', needsTable, () => {
   const text = [ITEM_ONE, ITEM_TWO, ITEM_THREE].join('\n');
-  const found = lint(text, { tier: 'strict', kind: 'markdown' });
+  // hard-word is advice, not a boundary signal, so it stays out of this list.
+  const found = lint(text, { tier: 'strict', kind: 'markdown' })
+    .filter((v) => v.sev === 'error');
   assert.deepEqual(found.map((v) => `${v.line} ${v.rule}`), [
     '1 punctuation',
     '2 clause-pileup',
@@ -334,13 +343,13 @@ test('a run that opens inside a paren is prose, not a path', () => {
 });
 
 test('a rare word in a run that opens inside a paren is read', needsTable, () => {
-  const text = 'Unknown axis values (language/domain/strictness/backend/layer name) '
+  const text = 'Unknown axis values (language/domain/connoisseur/backend/layer name) '
     + 'are rejected with an error.';
   const found = lint(text, { tier: 'flavored', kind: 'markdown' });
   assert.equal(found.length, 1);
   assert.equal(found[0].line, 1);
   assert.equal(found[0].rule, 'hard-word');
-  assert.match(found[0].msg, /strictness/);
+  assert.match(found[0].msg, /connoisseur/);
 });
 
 test('a bold lead-in opens no sentence, so its first word stays a name', () => {
@@ -351,12 +360,12 @@ test('a bold lead-in opens no sentence, so its first word stays a name', () => {
 });
 
 test('a bold mark opens no path, and the words it wraps are read', needsTable, () => {
-  const text = '- **Directive/placeholder conventions** chosen for readability here today.';
+  const text = '- **Sample/placeholder conventions** chosen by a connoisseur today.';
   const found = lint(text, { tier: 'flavored', kind: 'markdown' });
   assert.deepEqual(found.map((v) => `${v.line} ${v.rule}`), ['1 hard-word', '1 hard-word']);
   const words = found.map((v) => v.msg).join(' ');
   assert.match(words, /placeholder/);
-  assert.match(words, /readability/);
+  assert.match(words, /connoisseur/);
 });
 
 test('the words that follow a path are still read', needsTable, () => {

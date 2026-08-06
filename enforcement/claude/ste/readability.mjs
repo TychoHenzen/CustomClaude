@@ -98,7 +98,7 @@ function chunkLengthMean(chunk) {
 
 /**
  * Mean and spread of the two raw signals, measured over this repository's
- * own prose. Step S08 built the corpus from every markdown block in
+ * own prose. An earlier step built the corpus from every markdown block in
  * README.md, everything under enforcement/, and everything under
  * SystemPrompts/. It used the real block splitter and sentence splitter
  * from ste-lint.mjs. It kept blocks of at least 15 words, the same floor
@@ -117,7 +117,7 @@ const SD_LEN = 0.5036;
 
 /**
  * Grade for perfectly average prose, at both z-scores equal to zero.
- * Grades per standard deviation of combined difference. Step S08 picked
+ * Grades per standard deviation of combined difference. An earlier step picked
  * these so ordinary prose in this repository lands near grade 9. This
  * repository's hardest block, among the five files the linter runs at
  * error severity, lands at grade 15.92 under these two numbers. The

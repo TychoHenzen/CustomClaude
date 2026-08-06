@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs';
 import { lint } from '../ste/ste-lint.mjs';
 
 const CHAT_RULES = new Set([
-  'slop-word', 'filler', 'nominalization', 'punctuation', 'hard-word',
+  'slop-word', 'filler', 'nominalization', 'punctuation', 'hard-word', 'acronym',
 ]);
 const MAX_REPORTED = 10;
 

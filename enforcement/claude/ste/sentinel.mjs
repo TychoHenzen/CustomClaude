@@ -14,8 +14,8 @@
  * the file to a recorded exemption list, which is the deliberate case where a
  * whole file is quoted material or generated text.
  *
- * Every consumption is recorded and the sentinel is deleted, so the escape
- * cannot be left switched on. Records start unacknowledged, and the
+ * Each use writes a record and deletes the sentinel, so nobody can leave
+ * the escape switched on. A record starts unacknowledged, and the
  * pre-commit hook refuses a commit while any stays open.
  */
 

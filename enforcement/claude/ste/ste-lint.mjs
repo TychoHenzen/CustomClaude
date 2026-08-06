@@ -9,8 +9,10 @@
  */
 
 import { detectEnglish } from './language.mjs';
+import { acronymRule } from './rules-acronym.mjs';
 import { hardWordRule, readabilityRule } from './rules-readability.mjs';
 import { clausePileupRule, nounStackRule } from './rules-structure.mjs';
+import { tangledSentenceRule } from './rules-syntax.mjs';
 import { proseBlocks, proseCanvas } from './prose-blocks.mjs';
 import { boundaryCuts } from './sentence-split.mjs';
 import {
@@ -72,10 +74,11 @@ function blockFindings(block, tier, fileLanguage) {
   if (languageOf(block, fileLanguage) === 'foreign') return found;
   return found.concat(
     vocabularyRules(block),
-    hardWordRule(block, tier),
+    hardWordRule(block),
     readabilityRule(block, tier),
     nounStackRule(block),
     clausePileupRule(block),
+    tangledSentenceRule(block),
   );
 }
 
@@ -89,6 +92,7 @@ export function lint(text, options = {}) {
   const canvas = proseCanvas(text, options.kind, options.ext);
   const fileLanguage = detectEnglish(canvas);
   const found = punctuationRule(text);
+  if (fileLanguage !== 'foreign') found.push(...acronymRule(canvas));
   for (const block of proseBlocks(canvas)) {
     found.push(...blockFindings(block, tier, fileLanguage));
   }

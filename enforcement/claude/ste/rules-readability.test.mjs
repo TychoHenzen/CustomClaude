@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 
 import { setTablePath } from './word-freq.mjs';
+import { setCorpusRoot } from './local-corpus.mjs';
 import { HARD_WORD_THRESHOLD, baseWordForms } from './word-forms.mjs';
 import {
   hardWordRule,
@@ -15,6 +16,16 @@ import { textMeasure } from './readability.mjs';
 import { lint, classify } from './ste-lint.mjs';
 
 const REAL_TABLE_PATH = join(process.env.USERPROFILE || process.env.HOME || '', '.claude', 'ste', 'data', 'word-freq.txt');
+
+/**
+ * The hard-word rule asks the local corpus whether the project already uses
+ * a word. Left alone it would read the working directory, so a test fixture
+ * word that this repository happens to discuss would vote for itself. Every
+ * test here runs against an empty corpus instead. local-corpus.test.mjs
+ * owns the tests for the corpus itself.
+ */
+const EMPTY_CORPUS = mkdtempSync(join(tmpdir(), 'ste-empty-corpus-'));
+setCorpusRoot(EMPTY_CORPUS);
 
 /** Words sorted in byte order, matching build-word-freq output. Frequency
  *  values sit above HARD_WORD_THRESHOLD for the ordinary words and below it
@@ -129,13 +140,29 @@ test('with the table absent the rule produces nothing and does not throw', () =>
   }
 });
 
-test('the tier controls severity: warn in flavored, error in strict', () => {
+test('hard-word is advice in both tiers, so it never blocks a write', () => {
   withFixture(() => {
     const flavored = hardWordRule(block('The zoological survey took a week.'), 'flavored');
     const strict = hardWordRule(block('The zoological survey took a week.'), 'strict');
     assert.equal(flavored[0].sev, 'warn');
-    assert.equal(strict[0].sev, 'error');
+    assert.equal(strict[0].sev, 'warn');
   });
+});
+
+test('a word this project already uses is not a hard word', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ste-corpus-use-'));
+  writeFileSync(join(dir, 'one.md'), 'The zoological report is ready.', 'utf8');
+  writeFileSync(join(dir, 'two.md'), 'Another zoological note.', 'utf8');
+  try {
+    setCorpusRoot(dir);
+    withFixture(() => {
+      const found = hardWordRule(block('The zoological survey took a week.'));
+      assert.deepEqual(found, []);
+    });
+  } finally {
+    setCorpusRoot(EMPTY_CORPUS);
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('a word inside a code span produces no hard-word violation', () => {
@@ -196,6 +223,45 @@ test('baseWordForms guesses ing with and without a restored e', () => {
 
 test('baseWordForms guesses adverbial ly', () => {
   assert.ok(baseWordForms('plainly').includes('plain'));
+});
+
+test('baseWordForms guesses the agent suffixes er and or', () => {
+  assert.ok(baseWordForms('profiler').includes('profile'));
+  assert.ok(baseWordForms('orchestrator').includes('orchestrate'));
+});
+
+test('baseWordForms guesses ery back to its verb', () => {
+  assert.ok(baseWordForms('forgery').includes('forge'));
+});
+
+test('baseWordForms guesses able, ility and ness', () => {
+  assert.ok(baseWordForms('tunable').includes('tune'));
+  assert.ok(baseWordForms('readability').includes('readable'));
+  assert.ok(baseWordForms('strictness').includes('strict'));
+});
+
+test('baseWordForms guesses ation back to its verb', () => {
+  assert.ok(baseWordForms('orchestration').includes('orchestrate'));
+});
+
+test('baseWordForms strips a prefix', () => {
+  assert.ok(baseWordForms('subagent').includes('agent'));
+  assert.ok(baseWordForms('overwrite').includes('write'));
+});
+
+test('baseWordForms strips a prefix and a suffix together', () => {
+  assert.ok(baseWordForms('unrequested').includes('request'));
+  assert.ok(baseWordForms('reimplementing').includes('implement'));
+});
+
+test('baseWordForms leaves a word it cannot take apart alone', () => {
+  assert.deepEqual(baseWordForms('helm'), []);
+});
+
+test('real table: a word built from a common base is not hard', { skip: !existsSync(REAL_TABLE_PATH) }, () => {
+  setTablePath(REAL_TABLE_PATH);
+  const text = 'The profiler ran, and a forgery check follows it here.';
+  assert.deepEqual(hardWordRule(block(text)), []);
 });
 
 test('an inflected form with a common base and a rare or absent inflected form is not flagged', () => {
@@ -343,7 +409,7 @@ test('a long sentence of average-frequency words blames sentence length', () => 
   });
 });
 
-// Step S08 made sentence length the far larger weight. A short block can no
+// An earlier step made sentence length the far larger weight. A short block can no
 // longer cross the ceiling on rarity alone. The "word rarity drives"
 // message has no reachable case now. Word rarity still moves the score.
 // Holding sentence length fixed at 16 words, a swap from common to rare

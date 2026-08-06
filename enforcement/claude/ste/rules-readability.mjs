@@ -8,40 +8,20 @@
  */
 
 import { hasTable, OOV_FLOOR } from './word-freq.mjs';
-import { bestLogFrequency, HARD_WORD_THRESHOLD } from './word-forms.mjs';
+import { baseWordForms, bestLogFrequency, HARD_WORD_THRESHOLD } from './word-forms.mjs';
+import { isLocalWord } from './local-corpus.mjs';
 import { textMeasure, MU_FREQ, SD_FREQ, MU_LEN, SD_LEN } from './readability.mjs';
 import { splitSentences } from './ste-lint.mjs';
 
 /**
- * Words this rule never flags as hard, checked in lower case.
- *
- * The word frequency table reads a crawl from 2006. It never saw most
- * software terms, so it floors every one of them at OOV_FLOOR. The
- * hardWordRule below already skips a floored word for that reason. But a
- * handful of real, non-floored entries are just as ordinary in this
- * repository's writing and still score under HARD_WORD_THRESHOLD:
- * `markdown` at -0.50, `newline` at 0.21, `phrasal` at -0.60, `backticks`
- * at -1.34, `blockquotes` at -1.55, and the name `Clippy` at -1.37. This
- * list adds them by hand, checked against this repository's own good
- * prose files.
- *
- * `cannot` is a separate case, a corpus glitch rather than a domain gap.
- * It sits at rank 106,595 with 88,737 occurrences, log frequency -0.82,
- * below ordinary words such as `markdown` and `ampersand`. Every other
- * common modal verb ranks in the hundreds. This list carries it too, with
- * this note as the record of why.
- *
- * `enforcement/INSTALL-PROMPT.md` is a strict-tier file in the good set.
- * Hard-word runs at error severity there. It surfaced five more ordinary
- * words that score under the line for the same reason. Their scores run
- * from -0.58 up to 0.26. That range sits too close to a genuinely hard
- * word such as `ontological`, at -0.12. The threshold alone cannot tell
- * them apart, so this list carries them too.
+ * `cannot` is a corpus glitch rather than a rare word. It sits at rank
+ * 106,595 with 88,737 occurrences, log frequency -0.82, below ordinary
+ * words such as `markdown` and `ampersand`. Every other common modal verb
+ * ranks in the hundreds. It is the one word the two votes below cannot
+ * settle, because a project that never writes it still owes its reader
+ * nothing.
  */
-const DOMAIN_ALLOWLIST = new Set([
-  'markdown', 'newline', 'phrasal', 'backticks', 'blockquotes', 'clippy',
-  'cannot', 'ratchet', 'caveman', 'reinstate', 'unacknowledged', 'overwrite',
-]);
+const TABLE_GLITCHES = new Set(['cannot']);
 
 /** A word shorter than this many letters is never flagged as hard. */
 const MIN_HARD_WORD_LENGTH = 5;
@@ -94,26 +74,49 @@ function lineOf(block, offset) {
   return block.line + (before.match(/\n/g) || []).length + 1;
 }
 
-function severityFor(tier) {
-  return tier === 'strict' ? 'error' : 'warn';
+/**
+ * True when word is rare for a reader of this project. Two votes decide it.
+ *
+ * The frequency table votes first. A word above HARD_WORD_THRESHOLD is
+ * common English and stops here. A word absent from the table floors at
+ * OOV_FLOOR and stops here too. The table reads a 2006 crawl, so absence
+ * marks a young word rather than a hard one.
+ *
+ * The project votes second. A word this project already uses, in two files
+ * or five times over, is vocabulary the reader brought with them. Telling a
+ * writer to replace it costs precision and buys nothing. That vote replaces
+ * a hand-written allowlist. The list had grown to twelve entries against a
+ * hundred and thirty-two offenders in one repository alone.
+ */
+function rarityOf(word) {
+  const lower = word.toLowerCase();
+  if (TABLE_GLITCHES.has(lower)) return null;
+  const freq = bestLogFrequency(word);
+  if (freq === null || freq === OOV_FLOOR || freq > HARD_WORD_THRESHOLD) return null;
+  if (isProjectVocabulary(lower)) return null;
+  return freq;
+}
+
+/** True when the project uses word, in the form written or in its base
+ *  form. A project that writes `linter` has taught its reader `linters`. */
+function isProjectVocabulary(lower) {
+  if (isLocalWord(lower)) return true;
+  return baseWordForms(lower).some((base) => isLocalWord(base));
 }
 
 /**
  * Find every hard word in block and return violations in the shape the
  * linter uses. Returns an empty array when no frequency table is loaded.
- * It never throws, because with no table there is no evidence to flag on.
+ * It never throws, because with no table it has no evidence to flag on.
  *
- * A word absent from the table floors at OOV_FLOOR and never flags. The
- * table reads a 2006 crawl, so absence marks a young word, not a hard one.
- * Most of the confirmed false hits, `linter`, `tweakcc`, `CustomClaude`,
- * and others, are exactly this case. Step S08 chose this fix over a
- * longer allowlist or a second check on word length. DOMAIN_ALLOWLIST
- * above still catches the handful of real, non-floored entries that need
- * it.
+ * Every finding carries warn severity, in both tiers. Research on
+ * readability formulas reads them as a good diagnosis and a bad
+ * prescription. Texts revised to shorter sentences and commoner words
+ * measure easier and test worse. A precise term carries meaning that its
+ * plain paraphrase drops. So this rule advises and never blocks.
  */
-export function hardWordRule(block, tier) {
+export function hardWordRule(block) {
   if (!hasTable()) return [];
-  const sev = severityFor(tier);
   const found = [];
 
   WORD_PATTERN.lastIndex = 0;
@@ -121,17 +124,16 @@ export function hardWordRule(block, tier) {
   while ((m = WORD_PATTERN.exec(block.text)) !== null) {
     const word = m[0];
     if (word.length < MIN_HARD_WORD_LENGTH) continue;
-    if (DOMAIN_ALLOWLIST.has(word.toLowerCase())) continue;
     if (looksLikeProperNoun(word, block.text, m.index)) continue;
     if (looksLikeEntityName(word, block.text, m.index)) continue;
 
-    const freq = bestLogFrequency(word);
-    if (freq === null || freq === OOV_FLOOR || freq > HARD_WORD_THRESHOLD) continue;
+    const freq = rarityOf(word);
+    if (freq === null) continue;
 
     found.push({
       line: lineOf(block, m.index),
       rule: 'hard-word',
-      sev,
+      sev: 'warn',
       msg: `"${word}" is a rare word (log frequency ${freq.toFixed(2)}). Use a commoner one.`,
     });
   }
@@ -145,8 +147,8 @@ export function hardWordRule(block, tier) {
  *
  * The linter scores one block at a time, not a whole document averaged
  * together. A single hard paragraph can measure harder than its whole
- * document's own average. Step S08 measured the one strict-tier file in
- * the corpus that must pass, `enforcement/INSTALL-PROMPT.md`. Its hardest
+ * document's own average. An earlier step measured the one strict-tier
+ * file in the corpus that must pass, `enforcement/INSTALL-PROMPT.md`. Its hardest
  * block scores grade 11.52, 1.26 standard deviations above average. This
  * ceiling sits well above that block.
  */
@@ -156,7 +158,7 @@ export const READABILITY_CEILING_STRICT = 14; // BASE + W * 2.5 standard deviati
  * Combined-difficulty ceiling for the flavored tier, in grades, under the
  * standardized scale in readability.mjs.
  *
- * Step S08 measured every flavored-tier file in the corpus that must pass.
+ * An earlier step measured every flavored-tier file that must pass.
  * Its hardest block, a README bullet, scores grade 15.92, 3.46 standard
  * deviations above average. Probe 1 from the task brief, six sentences of
  * pure jargon, scores grade 17.03, 4.01 standard deviations. This ceiling
@@ -169,7 +171,7 @@ export const READABILITY_CEILING_FLAVORED = 16.5; // BASE + W * 3.75 standard de
  * too little text to average over, so the result would read as noise
  * rather than a real signal.
  *
- * Step S08 measured a 15 word sentence built entirely from invented, rare
+ * An earlier step measured a 15 word sentence built from invented, rare
  * words. It scored grade 32.21, far over the flavored ceiling. A short
  * block can still cross the ceiling on rarity alone at this floor. This
  * floor stays at 15 words, about one plain sentence.

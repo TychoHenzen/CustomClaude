@@ -70,7 +70,7 @@ const ABSTRACT_NOUN_SUFFIXES = [
  * Run length for a noun stack. A run of content words at or past this
  * length is long enough to check for stacked nouns.
  *
- * Step S08 measured this repository's own prose at run length 3. It found
+ * An earlier step measured this repository's own prose at run length 3. It found
  * five false hits, and every one of them read as an ordinary technical
  * phrase, not a confusing pile of nouns. The one phrase this rule must
  * still catch is the owner's own example. Read the test file for both
@@ -86,8 +86,8 @@ export const NOUN_STACK_MIN_RUN_LENGTH = 4;
  * Count of confirmed abstract nouns a run must carry before it is flagged.
  * A run can hold plain nouns the suffix list cannot see, such as a config
  * name or a sort order. This value stays below the run length for that
- * reason. The owner's own example carries exactly 2 confirmed hits. Step
- * S08 kept this value, so that example still trips the rule after the run
+ * reason. The owner's own example carries exactly 2 confirmed hits. That
+ * step kept this value. The example still trips the rule after the run
  * length change above.
  */
 export const NOUN_STACK_MIN_SUFFIX_HITS = 2;
@@ -200,7 +200,7 @@ const SUBORDINATOR_PATTERN = new RegExp(`\\b(${SUBORDINATORS.join('|')})\\b`, 'g
  * Clause boundary ceiling. A sentence with a boundary count past this
  * number is flagged as a pileup.
  *
- * Step S08 ran this rule over the good corpus and found no hits at this
+ * An earlier step ran this rule over the good corpus and found no hits at this
  * value. It also ran the rule over four hand-written bad samples. One of
  * them, a dense technical paragraph, trips it at 4 boundaries. The other
  * three lean on comma lists and subordinators this rule already reads as

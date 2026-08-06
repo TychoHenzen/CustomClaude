@@ -50,11 +50,19 @@ function review(file, records) {
   if (isExempt(repoRoot, relPathIn(repoRoot, file))) return null;
 
   const ranges = addedRanges(records, text);
-  const errors = lint(text, { tier: info.tier, kind: info.kind, ext: info.ext })
-    .filter((v) => v.sev === 'error');
+  const found = lint(text, { tier: info.tier, kind: info.kind, ext: info.ext });
+  const errors = found.filter((v) => v.sev === 'error');
   const fresh = errors.filter((v) => inRanges(v.line, ranges));
+  const advice = found
+    .filter((v) => v.sev !== 'error')
+    .filter((v) => inRanges(v.line, ranges));
   return {
-    file, repoRoot, tier: info.tier, fresh, existing: errors.filter((v) => !fresh.includes(v)),
+    file,
+    repoRoot,
+    tier: info.tier,
+    fresh,
+    existing: errors.filter((v) => !fresh.includes(v)),
+    advice,
   };
 }
 
@@ -87,6 +95,10 @@ function renderFile({ result, reason }) {
     if (result.existing.length > MAX_EXISTING) {
       lines.push(`  ... and ${result.existing.length - MAX_EXISTING} more.`);
     }
+  }
+  if (result.advice.length) {
+    lines.push('  advice only, never blocking:');
+    lines.push(...result.advice.slice(0, MAX_EXISTING).map(renderFinding));
   }
   return lines.join('\n');
 }
