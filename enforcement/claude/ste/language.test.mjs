@@ -28,6 +28,26 @@ const SPANISH = 'El analizador lee el archivo y escribe el resultado en el '
   + 'disco. Cada linea sigue el mismo camino. Cuando el archivo no existe, el '
   + 'programa termina con un error claro y no escribe nada.';
 
+const DUTCH = 'De parser leest het bestand en schrijft het resultaat naar de '
+  + 'schijf. Elke regel volgt hetzelfde pad. Als het bestand ontbreekt, stopt '
+  + 'het programma met een duidelijke melding.';
+
+const FRENCH = 'Le analyseur lit le fichier et ecrit le resultat sur le '
+  + 'disque. Chaque ligne suit le meme chemin. Quand le fichier est absent, le '
+  + 'programme sort avec une erreur claire.';
+
+/**
+ * A Dutch commit body written around C# identifiers. Rarity alone reads this
+ * as English, because the identifiers are common English and the short Dutch
+ * words sit at ordinary scores in an English frequency table.
+ */
+const DUTCH_WITH_CODE = 'FIX AND naar OR in filter voor periodieken.\n'
+  + 'FIX datum check vergeleek start met start in plaats van eind.\n'
+  + 'FIX SaveChanges buiten guard verplaatst voor IBAN.\n'
+  + 'FIX null guards voor DebtMutations en TransactionLinks.\n'
+  + 'Wijziging: DetermineStartDate naar static.\n'
+  + 'Wijziging: nested ternary naar null-conditional.';
+
 // ---------------------------------------------------------------------------
 // Verdicts
 // ---------------------------------------------------------------------------
@@ -40,6 +60,22 @@ test('Portuguese, Spanish and German prose read as foreign', needsTable, () => {
   assert.equal(detectEnglish(PORTUGUESE), 'foreign');
   assert.equal(detectEnglish(SPANISH), 'foreign');
   assert.equal(detectEnglish(GERMAN), 'foreign');
+});
+
+test('Dutch and French prose read as foreign', needsTable, () => {
+  assert.equal(detectEnglish(DUTCH), 'foreign');
+  assert.equal(detectEnglish(FRENCH), 'foreign');
+});
+
+test('Dutch written around code identifiers reads as foreign', needsTable, () => {
+  assert.equal(detectEnglish(DUTCH_WITH_CODE), 'foreign');
+});
+
+test('English quoting a foreign phrase still reads as English', needsTable, () => {
+  const quoted = 'The commit body says "in plaats van de oude waarde", which '
+    + 'is the phrase we want. The parser reads it and writes the result to '
+    + 'the disk without any complaint.';
+  assert.equal(detectEnglish(quoted), 'english');
 });
 
 test('text too short to judge reads as unknown', () => {
@@ -78,8 +114,15 @@ test('foreign prose raises no word or readability violation', needsTable, () => 
   assert.deepEqual(rules(found), []);
 });
 
+test('a Dutch commit body raises no readability violation', needsTable, () => {
+  const found = lint(`fix(prognose): fix bugs\n\n${DUTCH_WITH_CODE}\n`, {
+    tier: 'flavored', kind: 'commit-msg',
+  });
+  assert.equal(found.filter((v) => v.rule === 'readability').length, 0);
+});
+
 test('foreign prose stays clean in the strict tier too', needsTable, () => {
-  for (const text of [PORTUGUESE, SPANISH, GERMAN]) {
+  for (const text of [PORTUGUESE, SPANISH, GERMAN, DUTCH, FRENCH]) {
     const found = lint(`# Notas\n\n${text}\n`, { tier: 'strict' });
     assert.deepEqual(rules(found), []);
   }

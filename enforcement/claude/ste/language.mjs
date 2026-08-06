@@ -3,12 +3,18 @@
  *
  * Word rarity, hard words, readability, noun stacks and clause pileups only
  * mean anything on English. On Portuguese or German every ordinary word
- * measures as rare, so the block would fail for the wrong reason. Two kinds
- * of evidence have to agree before a text counts as another language.
- * Function words alone misread the terse list style this machine writes.
- * Word commonness alone misreads a block of product names.
+ * measures as rare, so the block would fail for the wrong reason.
+ *
+ * Two questions run in order. Do another language's function words carry
+ * this text. If not, do English function words carry it, and failing that,
+ * are its words rare. The first question reads positive evidence and settles
+ * a text that mixes a language with code. The other two read the absence of
+ * English evidence, and neither one is enough alone. Function words alone
+ * misread the terse list style this machine writes. Word commonness alone
+ * misreads a block of product names.
  */
 
+import { bestForeignShare } from './foreign-words.mjs';
 import { bestLogFrequency, HARD_WORD_THRESHOLD } from './word-forms.mjs';
 import { OOV_FLOOR } from './word-freq.mjs';
 
@@ -36,6 +42,16 @@ still never always here him his she who whom whose above below between
  * lists. Portuguese, Spanish, German, French and Dutch samples measured 0.000.
  */
 const FUNCTION_WORD_SHARE = 0.12;
+
+/**
+ * Share of word occurrences that must belong to one other language before
+ * that language wins the text. Measured over 3912 English blocks, from every
+ * markdown file under the user's Claude directory and the CustomClaude
+ * repository. The highest of them reached 0.042. A Dutch commit body written
+ * around C# identifiers, the case this test exists for, reached 0.183. This
+ * line sits in the gap between them.
+ */
+const FOREIGN_WORD_SHARE = 0.08;
 
 /**
  * Share of recognized words that must be rare for a foreign verdict. Over the
@@ -91,14 +107,26 @@ function rarityVerdict(words) {
 }
 
 /**
- * One of 'english', 'foreign' or 'unknown' for text. Enough function words
- * settle it without any lookup, because lookups are the expense here.
+ * True when one other language carries more of words than English does, by
+ * enough to rule out an English text that quotes a foreign phrase.
+ */
+function readsForeign(words, englishShare) {
+  const best = bestForeignShare(words);
+  return best.share >= FOREIGN_WORD_SHARE && best.share > englishShare;
+}
+
+/**
+ * One of 'english', 'foreign' or 'unknown' for text. Enough function words on
+ * either side settle it without any lookup, because lookups are the expense
+ * here.
  */
 export function detectEnglish(text) {
   const found = text.match(WORD_PATTERN) ?? [];
   if (found.length < MIN_WORDS) return 'unknown';
   const words = found.map((word) => word.toLowerCase());
   const hits = words.filter((word) => FUNCTION_WORDS.has(word)).length;
-  if (hits / words.length >= FUNCTION_WORD_SHARE) return 'english';
+  const englishShare = hits / words.length;
+  if (readsForeign(words, englishShare)) return 'foreign';
+  if (englishShare >= FUNCTION_WORD_SHARE) return 'english';
   return rarityVerdict(words);
 }
