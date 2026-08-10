@@ -16,8 +16,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# -- Prevent Claude from auto-updating behind our back ------------------------
-$env:CLAUDE_CODE_SKIP_AUTO_UPDATE = "1"
+# Update behaviour is pinned in settings.json, not here. See Sync-EnforcementEnv.
 
 # -- Paths (resolved ONCE, never recomputed) ----------------------------------
 
@@ -250,6 +249,51 @@ function New-EnforcementHookEntry {
     return [pscustomobject]@{ hooks = @($hook) }
 }
 
+# Two names decide how Claude Code updates itself, and they belong in
+# settings.json rather than in this process. Claude Code copies that "env" block
+# into its own environment, so the setting reaches every launch, including the
+# ones that run claude directly instead of through this script.
+#
+# DISABLE_AUTOUPDATER keeps Claude Code from replacing the exe this script just
+# installed and patched. It also stops plugin and marketplace updates, because
+# both read one "is the updater off" answer.
+#
+# FORCE_AUTOUPDATE_PLUGINS reverses that second effect. Only the plugin path
+# reads it, so the exe stays pinned while marketplaces refresh on startup.
+#
+# This script used to set CLAUDE_CODE_SKIP_AUTO_UPDATE on itself. No build reads
+# that name, so it pinned nothing and it hid which file held the real answer.
+function Sync-EnforcementEnv {
+    $settingsPath = Join-Path $ClaudeHome "settings.json"
+    if (-not (Test-Path $settingsPath)) {
+        Write-Host "  WARN: no $settingsPath, update flags not set." -ForegroundColor Yellow
+        return 0
+    }
+    try {
+        $json = (Get-Content $settingsPath -Raw) | ConvertFrom-Json
+    } catch {
+        Write-Host "  WARN: settings.json does not parse, update flags not set." -ForegroundColor Yellow
+        return 0
+    }
+    if (-not $json.env) {
+        $json | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+
+    $wanted = [ordered]@{ DISABLE_AUTOUPDATER = "1"; FORCE_AUTOUPDATE_PLUGINS = "1" }
+    $added = 0
+    foreach ($name in $wanted.Keys) {
+        if ("$($json.env.$name)" -eq $wanted[$name]) { continue }
+        $json.env | Add-Member -NotePropertyName $name -NotePropertyValue $wanted[$name] -Force
+        Write-Host "  Enforcement: set $name=$($wanted[$name]) in settings.json" -ForegroundColor Green
+        $added++
+    }
+    if ($added -eq 0) { return 0 }
+
+    Copy-Item $settingsPath "$settingsPath.bak" -Force
+    [System.IO.File]::WriteAllText($settingsPath, ($json | ConvertTo-Json -Depth 30), $Utf8NoBom)
+    return $added
+}
+
 # We match on the script file name, not on the whole command. A hand-edited node
 # path or wrapper then stays in place, and no second copy of the hook appears.
 function Sync-EnforcementHooks {
@@ -318,7 +362,7 @@ function Sync-Enforcement {
         return
     }
     $changed = (Copy-EnforcementTrees) + (Write-EnforcementRules) + (Add-EnforcementInclude)
-    $changed += (Sync-EnforcementHooks) + (Sync-EnforcementGitHooks) + (Sync-WordFreqTable)
+    $changed += (Sync-EnforcementEnv) + (Sync-EnforcementHooks) + (Sync-EnforcementGitHooks) + (Sync-WordFreqTable)
     Test-EnforcementDuplicateRules
     if ($changed -eq 0) {
         Write-Host "  Enforcement: up to date." -ForegroundColor DarkGray
