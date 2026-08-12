@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { nounStackRule, clausePileupRule } from './rules-structure.mjs';
+import {
+  clausePileupRule, longParagraphRule, nounStackRule, PARAGRAPH_SENTENCE_CAP,
+} from './rules-structure.mjs';
+import { COMPREHENSION } from './rule-classes.mjs';
 import { lint } from './ste-lint.mjs';
 
 function block(text, line = 0, heading = false) {
@@ -107,4 +110,66 @@ test('a bullet of backtick-quoted words masked to blank space produces no '
   const found = lint(text, { tier: 'flavored', kind: 'markdown' });
   const hits = found.filter((v) => v.rule === 'clause-pileup');
   assert.deepEqual(hits, []);
+});
+
+test('a list whose items open on the same word is not a clause-pileup', () => {
+  const text = 'No em dash, no en dash, no curly quotes, no ellipsis '
+    + 'character, no arrows.';
+  const found = clausePileupRule(block(text));
+  assert.deepEqual(found, []);
+});
+
+test('a list of articled items is not a clause-pileup, whatever the article', () => {
+  const text = 'An API name, a flag, a path, an error string, a language '
+    + 'name: these are precise.';
+  const found = clausePileupRule(block(text));
+  assert.deepEqual(found, []);
+});
+
+test('clauses that open on different words are still a clause-pileup', () => {
+  const text = 'The parser reads the file, the writer holds the buffer open, '
+    + 'because the linter checks it, although nobody asked for that.';
+  const found = clausePileupRule(block(text));
+  assert.equal(found.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// long-paragraph
+// ---------------------------------------------------------------------------
+
+/** One paragraph of count sentences, each one short and plain. */
+function paragraphOf(count) {
+  return Array.from({ length: count }, (_, i) => `The rule read file ${i}.`)
+    .join(' ');
+}
+
+test('a paragraph at the cap is not reported', () => {
+  const found = longParagraphRule(block(paragraphOf(PARAGRAPH_SENTENCE_CAP)));
+  assert.deepEqual(found, []);
+});
+
+test('a paragraph one sentence past the cap is reported once', () => {
+  const found = longParagraphRule(block(paragraphOf(PARAGRAPH_SENTENCE_CAP + 1)));
+  assert.equal(found.length, 1);
+  assert.equal(found[0].rule, 'long-paragraph');
+  assert.match(found[0].msg, /7 sentences/);
+});
+
+test('a long paragraph reports on its own first line', () => {
+  const found = longParagraphRule(block(paragraphOf(8), 11));
+  assert.equal(found[0].line, 12);
+});
+
+test('a heading is never a long paragraph', () => {
+  const found = longParagraphRule(block(paragraphOf(9), 0, true));
+  assert.deepEqual(found, []);
+});
+
+test('a long paragraph blocks, and it reaches the report through lint', () => {
+  const found = lint(`# Notes\n\n${paragraphOf(8)}\n`, {
+    tier: 'flavored', kind: 'markdown',
+  });
+  const hits = found.filter((v) => v.rule === 'long-paragraph');
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].cls, COMPREHENSION);
 });

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { lint } from './ste-lint.mjs';
+import { COMPREHENSION } from './rule-classes.mjs';
 
 /**
  * Build an em dash HTML entity from its name at run time, so the literal
@@ -130,40 +131,67 @@ test('the hex numeric em dash entity produces a punctuation violation, matched c
   assert.equal(punctuation.length, 1);
 });
 
-test('an en dash produces no violation', () => {
+/** The punctuation findings in text, which is written with the mark in it. */
+function punctuationIn(text) {
+  return lint(text, { tier: 'flavored', kind: 'markdown' })
+    .filter((v) => v.rule === 'punctuation');
+}
+
+test('an en dash produces a punctuation violation', () => {
   const enDash = String.fromCharCode(0x2013);
-  const text = `Pages 10${enDash}20 cover setup.\n`;
-  const found = lint(text, { tier: 'flavored', kind: 'markdown' });
-  assert.deepEqual(found, []);
+  const found = punctuationIn(`Pages 10${enDash}20 cover setup.\n`);
+  assert.equal(found.length, 1);
+  assert.match(found[0].msg, /en dash/);
 });
 
-test('a curly double quote produces no violation', () => {
+test('a curly double quote produces a punctuation violation', () => {
   const openQuote = String.fromCharCode(0x201c);
   const closeQuote = String.fromCharCode(0x201d);
-  const text = `She said ${openQuote}go now${closeQuote} and left.\n`;
-  const found = lint(text, { tier: 'flavored', kind: 'markdown' });
-  assert.deepEqual(found, []);
+  const found = punctuationIn(`She said ${openQuote}go now${closeQuote} today.\n`);
+  assert.equal(found.length, 1);
+  assert.match(found[0].msg, /curly quote/);
 });
 
-test('an ellipsis character produces no violation', () => {
+test('an ellipsis character produces a punctuation violation', () => {
   const ellipsis = String.fromCharCode(0x2026);
-  const text = `The list goes on${ellipsis} and stops there.\n`;
-  const found = lint(text, { tier: 'flavored', kind: 'markdown' });
-  assert.deepEqual(found, []);
+  const found = punctuationIn(`The list goes on${ellipsis} and stops there.\n`);
+  assert.equal(found.length, 1);
+  assert.match(found[0].msg, /ellipsis/);
 });
 
-test('an arrow character produces no violation', () => {
+test('an arrow character produces a punctuation violation', () => {
   const arrow = String.fromCharCode(0x2192);
-  const text = `Old value ${arrow} new value in the table.\n`;
-  const found = lint(text, { tier: 'flavored', kind: 'markdown' });
-  assert.deepEqual(found, []);
+  const found = punctuationIn(`Old value ${arrow} new value in the table.\n`);
+  assert.equal(found.length, 1);
+  assert.match(found[0].msg, /arrow/);
 });
 
-test('the contraction with a curly apostrophe produces no violation', () => {
+test('the contraction with a curly apostrophe produces a punctuation violation', () => {
   const curlyApostrophe = String.fromCharCode(0x2019);
-  const text = `Let${curlyApostrophe}s start the build now.\n`;
-  const found = lint(text, { tier: 'flavored', kind: 'markdown' });
-  assert.deepEqual(found, []);
+  const found = punctuationIn(`Let${curlyApostrophe}s start the build now.\n`);
+  assert.equal(found.length, 1);
+  assert.match(found[0].msg, /curly quote/);
+});
+
+test('a named ellipsis entity produces a punctuation violation', () => {
+  const amp = String.fromCharCode(38);
+  const closer = String.fromCharCode(59);
+  const found = punctuationIn(`The list goes on${amp}hellip${closer} and stops.\n`);
+  assert.equal(found.length, 1);
+  assert.match(found[0].msg, /ellipsis/);
+});
+
+test('one line carrying two kinds of mark reports each kind once', () => {
+  const enDash = String.fromCharCode(0x2013);
+  const arrow = String.fromCharCode(0x2192);
+  const found = punctuationIn(
+    `Pages 10${enDash}20 map old ${arrow} new, and 30${enDash}40 do not.\n`,
+  );
+  assert.equal(found.length, 2);
+});
+
+test('a line with no banned mark reports nothing', () => {
+  assert.deepEqual(punctuationIn('Pages 10-20 cover setup. Use "go now".\n'), []);
 });
 
 test('a filler opener still produces a filler violation', () => {
@@ -234,4 +262,33 @@ test('a weak opener still produces a weak-opener violation', () => {
   const found = lint(text, { tier: 'flavored', kind: 'markdown' });
   const weakOpener = found.filter((v) => v.rule === 'weak-opener');
   assert.equal(weakOpener.length, 1);
+});
+
+/** The self-grade findings in text. */
+function selfGradeIn(text) {
+  return lint(text, { tier: 'flavored', kind: 'markdown' })
+    .filter((v) => v.rule === 'self-grade');
+}
+
+test('a grading adverb in front of a verb is a self-grade violation', () => {
+  const found = selfGradeIn('The gate correctly refused the write.\n');
+  assert.equal(found.length, 1);
+  assert.equal(found[0].cls, COMPREHENSION);
+});
+
+test('a grading adverb behind a verb is a self-grade violation', () => {
+  assert.equal(selfGradeIn('The parser reads it correctly today.\n').length, 1);
+});
+
+test('a graded outcome with no adverb is a self-grade violation', () => {
+  assert.equal(selfGradeIn('The build came back as expected.\n').length, 1);
+  assert.equal(selfGradeIn('The scan found a real defect here.\n').length, 1);
+});
+
+test('a grading adverb with no verb beside it is left alone', () => {
+  assert.deepEqual(selfGradeIn('Would a reader hear it correctly?\n'), []);
+});
+
+test('what happened, with no verdict on it, is left alone', () => {
+  assert.deepEqual(selfGradeIn('The gate refused the write and said why.\n'), []);
 });

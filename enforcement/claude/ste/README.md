@@ -3,18 +3,23 @@
 A mechanical checker for word readability and sentence structure. It measures
 how rare each word is, how hard each sentence reads as a whole, and how a
 sentence is built. A small vocabulary check survives from the older rule set:
-banned marketing words and one banned punctuation mark. It cannot judge
-whether a paragraph is true, or whether a technical noun is the right one. It
-fixes the form of slop. It cannot make a hollow paragraph true.
+banned marketing words and the punctuation marks that corrupt on this machine.
+It cannot judge whether a paragraph is true, or whether a technical noun is
+the right one. It fixes the form of slop. It cannot make a hollow paragraph
+true.
+
+The style it enforces is `enforcement/natural.md`.
 
 ## Files
 
 | Path | Role |
 |------|------|
-| `ste-lint.mjs` | Rules, engine, and command line front end |
+| `ste-lint.mjs` | Engine and command line front end |
+| `rule-classes.mjs` | What each rule costs the writer, and the sentence quoter |
 | `rules-readability.mjs` | Hard-word and readability rules |
-| `rules-structure.mjs` | Noun-stack and clause-pileup rules |
+| `rules-structure.mjs` | Noun-stack, clause-pileup, and long-paragraph rules |
 | `rules-syntax.mjs` | Tangled-sentence rule, which measures sentence shape |
+| `rules-reporting.mjs` | Bare-label rule, which asks what a step did |
 | `rules-acronym.mjs` | Acronym rule, which asks for an expansion on first use |
 | `local-corpus.mjs` | Builds the vocabulary the current project already uses |
 | `corpus-files.mjs` | Picks the files that vocabulary is built from |
@@ -38,7 +43,8 @@ node ~/.claude/ste/ste-lint.mjs --format=json src/parser.ts
 node ~/.claude/ste/ste-lint.mjs --stdin --name=draft < draft.md
 ```
 
-Exit code 1 means the file has at least one error-severity violation.
+Exit code 1 means the file carries at least one encoding or comprehension
+violation.
 
 ## Tiers
 
@@ -47,29 +53,52 @@ Exit code 1 means the file has at least one error-severity violation.
 - `flavored` covers everything else. Sentences cap at 25 words. The
   readability ceiling is 16.5.
 
-`hard-word` runs at warn severity in both tiers, so it never blocks a write.
-
 The hook picks the tier from the file name. A name that contains `runbook`,
 `procedure`, `install`, `security`, `troubleshoot`, `incident`, `migration`,
 `upgrade`, or `error` gets the strict tier.
 
+## Three classes, not two severities
+
+`rule-classes.mjs` says what a finding costs the writer. A rule names one
+thing about a text, and its class says what kind of thing that is.
+
+- `encoding` blocks on its own, everywhere, with no budget. The character
+  corrupts the file when a reader loads it back, and no later reader spots it
+  by eye.
+- `comprehension` blocks once the count passes the budget. The reader cannot
+  follow the sentence, and that is what this checker is for.
+- `polish` never blocks, however many there are. The reader follows the
+  sentence and one word or one mark could be better.
+
+Every rule used to carry `error`, so a semicolon weighed the same as a
+paragraph nobody can parse. The gates count findings, so the cheapest way past
+them was to delete two semicolons and leave the jargon. That is what happened,
+turn after turn. The split ended it.
+
+Every finding that blocks quotes the sentence it wants rewritten. A grade
+number against a ceiling named no sentence, so the writer went hunting, and
+hunting is how a turn ends up fixing punctuation.
+
 ## Rules
 
-| Rule | Severity | Checks |
-|------|----------|--------|
-| `long-sentence` | error | Word count over the tier cap |
-| `semicolon` | error | Any semicolon in prose |
-| `weak-opener` | warn | `there is a`, `there are some` |
-| `slop-word` | error | Marketing adjectives and decorative vocabulary |
-| `filler` | error | Openers such as `it is important to note that` |
-| `nominalization` | error | `perform an analysis of`, and the same shape |
-| `punctuation` | error | The em dash, in every spelling |
-| `hard-word` | warn | A word both the frequency table and this project call rare |
-| `acronym` | error | An acronym with no expansion, no bracket, and no history in this project |
-| `readability` | error | A block scores past the tier's grade ceiling |
-| `noun-stack` | error | A run of content words with no verb, carrying abstract nouns |
-| `clause-pileup` | error | A sentence with too many clause boundaries |
-| `tangled-sentence` | error | A sentence that holds its opening open too long |
+| Rule | Class | Checks |
+|------|-------|--------|
+| `punctuation` | encoding | The em dash, en dash, curly quotes, ellipsis character, and arrows, in every spelling |
+| `long-sentence` | comprehension | Word count over the tier cap |
+| `long-paragraph` | comprehension | A paragraph past six sentences |
+| `readability` | comprehension | A block scores past the tier's grade ceiling |
+| `noun-stack` | comprehension | A run of content words with no verb, carrying abstract nouns |
+| `clause-pileup` | comprehension | A sentence with too many clause boundaries |
+| `tangled-sentence` | comprehension | A sentence that holds its opening open too long |
+| `bare-label` | comprehension | A step named by ID or number alone, as in `S10` or `phase 3` |
+| `self-grade` | comprehension | A verdict on your own work, as in `correctly refused` |
+| `semicolon` | polish | Any semicolon in prose |
+| `slop-word` | polish | Marketing adjectives and decorative vocabulary |
+| `filler` | polish | Openers such as `it is important to note that` |
+| `nominalization` | polish | `perform an analysis of`, and the same shape |
+| `weak-opener` | polish | `there is a`, `there are some` |
+| `acronym` | polish | An acronym with no expansion, no bracket, and no history in this project |
+| `hard-word` | polish | A word both the frequency table and this project call rare |
 
 ## What the checker skips
 
@@ -108,12 +137,23 @@ hundred times has a name, not an abbreviation, and nobody reading that
 repository needs it spelled out. A term that appears in one file still gets
 reported on first use.
 
+`bare-label` asks it too. `STE100` reads as a step number and names a writing
+standard, and this repository writes it everywhere. `S10` in a repository that
+never mentions it again is a step of one session, and the reader was not
+there.
+
 The corpus reads tracked files only. So a file ignored by `.gitignore` never
 votes, and neither does a file the current turn just wrote. It skips
 dependency trees: `node_modules`, `vendor`, `plugins`, `dist`, `build`, and
 the rest. It records tokens of two letters and up, digits included, so
 `STE100` votes for itself. Set `STE_LOCAL_CORPUS=off` to turn the second
 vote off.
+
+A test for any of these three rules has to pin the corpus. Call `setCorpusRoot`
+on an empty temporary directory first. Otherwise the test reads this
+repository, and this repository documents each rule with the label that rule is
+meant to catch. Writing `S10` into the README and two test files was enough to
+make `S10` a project name, and five budget tests then measured nothing.
 
 The built vocabulary caches under `~/.claude/ste/cache` for six hours. Each
 cache file opens with a header naming the settings that built it. A cache
@@ -158,6 +198,11 @@ The output is a US grade level under the Flesch-Kincaid style scale. It is
 NOT a Lexile L number. A real L number needs a regression against books with
 a published score, and this checker has no such anchor texts.
 
+The score belongs to the block, so it names no one sentence. The report picks
+one anyway. It scores each sentence of eight words or more on the same two
+signals. It then quotes the hardest of them, and that is the sentence to
+rewrite.
+
 ## Escape hatches
 
 - `touch .prose-skip` waives the next blocked write, once.
@@ -173,6 +218,13 @@ a published score, and this checker has no such anchor texts.
 ## Scope
 
 The write hook reports only the lines that the tool call wrote. Prose that was
-already in the file never blocks an unrelated edit. The reply hook checks
-vocabulary, filler, nominalization, punctuation, acronyms, and hard-word only,
-so the terse caveman reply style keeps working.
+already in the file never blocks an unrelated edit. One turn may add three
+findings of the comprehension class to a file and still pass.
+
+The reply hook runs every rule. A reader hears a chat reply the same way they
+hear a document, so a reply written in fragments fails them the same way. It
+carries a budget of two comprehension violations, below the file budget,
+because a reply is shorter and gets rewritten in place.
+
+The commit message checker gets no budget on either blocking class. A commit
+message is short and cheap to rewrite.

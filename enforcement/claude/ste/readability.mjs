@@ -215,4 +215,39 @@ export function textMeasure(sentences) {
   };
 }
 
+/**
+ * A sentence too short to blame for a hard block. Below this, one rare word
+ * swings the score and the reader was never held up.
+ */
+const MIN_BLAMED_WORDS = 8;
+
+/**
+ * The sentence in sentences that reads hardest, or null when every one of
+ * them is too short to blame.
+ *
+ * The block score is an average, so it names no sentence. A writer told a
+ * paragraph reads at grade 17 still has to find the bad line. This picks it,
+ * scoring each sentence on its own with the same two signals the block
+ * score uses.
+ */
+export function hardestSentence(sentences) {
+  const usable = validSentences(sentences)
+    .filter((text) => wordsOf(text).length >= MIN_BLAMED_WORDS);
+  if (!usable.length) return null;
+
+  let worst = null;
+  let worstScore = -Infinity;
+  for (const text of usable) {
+    const words = wordsOf(text);
+    const lengthMean = Math.log(words.length);
+    const score = hasTable()
+      ? combinedDifficulty(average(words.map(wordLogFrequency)), lengthMean)
+      : lengthOnlyDifficulty(lengthMean);
+    if (score <= worstScore) continue;
+    worstScore = score;
+    worst = text;
+  }
+  return worst;
+}
+
 export { MU_FREQ, SD_FREQ, MU_LEN, SD_LEN, BASE, W };

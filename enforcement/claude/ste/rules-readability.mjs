@@ -10,8 +10,11 @@
 import { hasTable, OOV_FLOOR } from './word-freq.mjs';
 import { baseWordForms, bestLogFrequency, HARD_WORD_THRESHOLD } from './word-forms.mjs';
 import { isLocalWord } from './local-corpus.mjs';
-import { textMeasure, MU_FREQ, SD_FREQ, MU_LEN, SD_LEN } from './readability.mjs';
+import {
+  hardestSentence, textMeasure, MU_FREQ, SD_FREQ, MU_LEN, SD_LEN,
+} from './readability.mjs';
 import { splitSentences } from './ste-lint.mjs';
+import { quoteSentence } from './rule-classes.mjs';
 
 /**
  * `cannot` is a corpus glitch rather than a rare word. It sits at rank
@@ -109,7 +112,7 @@ function isProjectVocabulary(lower) {
  * linter uses. Returns an empty array when no frequency table is loaded.
  * It never throws, because with no table it has no evidence to flag on.
  *
- * Every finding carries warn severity, in both tiers. Research on
+ * Every finding lands in the polish class, in both tiers. Research on
  * readability formulas reads them as a good diagnosis and a bad
  * prescription. Texts revised to shorter sentences and commoner words
  * measure easier and test worse. A precise term carries meaning that its
@@ -133,7 +136,6 @@ export function hardWordRule(block) {
     found.push({
       line: lineOf(block, m.index),
       rule: 'hard-word',
-      sev: 'warn',
       msg: `"${word}" is a rare word (log frequency ${freq.toFixed(2)}). Use a commoner one.`,
     });
   }
@@ -160,9 +162,10 @@ export const READABILITY_CEILING_STRICT = 14; // BASE + W * 2.5 standard deviati
  *
  * An earlier step measured every flavored-tier file that must pass.
  * Its hardest block, a README bullet, scores grade 15.92, 3.46 standard
- * deviations above average. Probe 1 from the task brief, six sentences of
- * pure jargon, scores grade 17.03, 4.01 standard deviations. This ceiling
- * sits between the two, with more than half a grade of room on each side.
+ * deviations above average. The worst sample in the task brief, six
+ * sentences of pure jargon, scores grade 17.03, 4.01 standard deviations.
+ * This ceiling sits between the two, with more than half a grade of room on
+ * each side.
  */
 export const READABILITY_CEILING_FLAVORED = 16.5; // BASE + W * 3.75 standard deviations.
 
@@ -211,34 +214,47 @@ function degradedNote(degraded) {
   return ' The word frequency table is missing. Word rarity was not weighed.';
 }
 
-function readabilityMessage(measure, ceiling, tier) {
+function readabilityMessage(measure, ceiling, tier, worst) {
   const grade = measure.combinedDifficulty.toFixed(2);
   const advice = driverAdvice(dominantDriver(measure));
   const note = degradedNote(measure.degraded);
-  return `Readability grade is ${grade}, ceiling for ${tier} is ${ceiling.toFixed(2)}.${note} ${advice}`;
+  const blame = worst ? ` Rewrite this sentence: ${quoteSentence(worst)}` : '';
+  return `Readability grade is ${grade}, ceiling for ${tier} is ${ceiling.toFixed(2)}.`
+    + `${note} ${advice}${blame}`;
+}
+
+/** The offset of the hardest sentence in block, or zero when no sentence
+ *  carries the blame on its own. */
+function blameOffset(parts, worst) {
+  const hit = parts.find((part) => part.text === worst);
+  return hit ? hit.offset : 0;
 }
 
 /**
  * Score block as a whole and report one violation when it reads harder
  * than tier allows. A block that fails on both long sentences and rare
  * words still gets one report, because a hard paragraph is one problem.
- * Never throws, so a scoring surprise cannot block every write.
+ *
+ * The score belongs to the block, but the report points at the hardest
+ * sentence in it and quotes that sentence. A grade number alone left the
+ * writer hunting, and hunting is how a turn goes to fixing punctuation
+ * instead. Never throws, so a scoring surprise cannot block every write.
  */
 export function readabilityRule(block, tier) {
   try {
     if (block.heading) return [];
-    const sentences = splitSentences(block.text).map((s) => s.text);
-    const measure = textMeasure(sentences);
+    const parts = splitSentences(block.text);
+    const measure = textMeasure(parts.map((s) => s.text));
     if (measure.wordCount < MIN_READABILITY_WORDS) return [];
     if (measure.combinedDifficulty === null) return [];
     const ceiling = ceilingFor(tier);
     if (measure.combinedDifficulty <= ceiling) return [];
 
+    const worst = hardestSentence(parts.map((s) => s.text));
     return [{
-      line: lineOf(block, 0),
+      line: lineOf(block, blameOffset(parts, worst)),
       rule: 'readability',
-      sev: 'error',
-      msg: readabilityMessage(measure, ceiling, tier),
+      msg: readabilityMessage(measure, ceiling, tier, worst),
     }];
   } catch {
     return [];

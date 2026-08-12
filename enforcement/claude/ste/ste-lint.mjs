@@ -11,14 +11,18 @@
 import { detectEnglish } from './language.mjs';
 import { acronymRule } from './rules-acronym.mjs';
 import { hardWordRule, readabilityRule } from './rules-readability.mjs';
-import { clausePileupRule, nounStackRule } from './rules-structure.mjs';
+import {
+  clausePileupRule, longParagraphRule, nounStackRule,
+} from './rules-structure.mjs';
 import { tangledSentenceRule } from './rules-syntax.mjs';
+import { bareLabelRule } from './rules-reporting.mjs';
 import { proseBlocks, proseCanvas } from './prose-blocks.mjs';
 import { boundaryCuts } from './sentence-split.mjs';
 import {
   longSentenceRule, punctuationRule, semicolonRule,
 } from './rules-prose.mjs';
 import { vocabularyRules } from './rules-vocabulary.mjs';
+import { classOf } from './rule-classes.mjs';
 import { runCli } from './ste-cli.mjs';
 
 export { classify } from './classify.mjs';
@@ -31,10 +35,9 @@ export function isDisabled() {
 
 /** One line per finding, ready for a terminal. */
 export function format(violations, label) {
-  return violations.map((finding) => {
-    const mark = finding.sev === 'error' ? 'ERROR' : 'warn ';
-    return `${label}:${finding.line}: ${mark} [${finding.rule}] ${finding.msg}`;
-  }).join('\n');
+  return violations.map((finding) => (
+    `${label}:${finding.line}: ${finding.cls} [${finding.rule}] ${finding.msg}`
+  )).join('\n');
 }
 
 /** The first part opens the text, so it keeps the white space in front of
@@ -70,7 +73,11 @@ function languageOf(block, fileLanguage) {
 }
 
 function blockFindings(block, tier, fileLanguage) {
-  const found = [...semicolonRule(block), ...longSentenceRule(block, tier)];
+  const found = [
+    ...semicolonRule(block),
+    ...longSentenceRule(block, tier),
+    ...longParagraphRule(block),
+  ];
   if (languageOf(block, fileLanguage) === 'foreign') return found;
   return found.concat(
     vocabularyRules(block),
@@ -79,6 +86,7 @@ function blockFindings(block, tier, fileLanguage) {
     nounStackRule(block),
     clausePileupRule(block),
     tangledSentenceRule(block),
+    bareLabelRule(block),
   );
 }
 
@@ -86,7 +94,13 @@ function byPlace(one, other) {
   return one.line - other.line || one.rule.localeCompare(other.rule);
 }
 
-/** Every violation in text, ordered by line and then by rule name. */
+/**
+ * Every violation in text, ordered by line and then by rule name.
+ *
+ * Each finding gets its class here rather than at the rule. A rule names one
+ * thing about a text. What that costs the writer is one decision, held in
+ * rule-classes.mjs, so no rule can promote itself.
+ */
 export function lint(text, options = {}) {
   const tier = options.tier === 'strict' ? 'strict' : 'flavored';
   const canvas = proseCanvas(text, options.kind, options.ext);
@@ -96,7 +110,7 @@ export function lint(text, options = {}) {
   for (const block of proseBlocks(canvas)) {
     found.push(...blockFindings(block, tier, fileLanguage));
   }
-  return found.sort(byPlace);
+  return found.map((v) => ({ ...v, cls: classOf(v.rule) })).sort(byPlace);
 }
 
 if (process.argv[1]?.endsWith('ste-lint.mjs')) {

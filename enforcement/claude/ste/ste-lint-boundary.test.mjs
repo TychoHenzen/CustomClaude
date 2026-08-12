@@ -10,6 +10,9 @@ import {
 } from './ste-lint.mjs';
 import { setCorpusRoot } from './local-corpus.mjs';
 import { runCli } from './ste-cli.mjs';
+import {
+  blocks, classOf, COMPREHENSION, ENCODING, POLISH,
+} from './rule-classes.mjs';
 
 const HOME = process.env.USERPROFILE || process.env.HOME || '';
 const REAL_TABLE_PATH = join(HOME, '.claude', 'ste', 'data', 'word-freq.txt');
@@ -79,30 +82,32 @@ test('a windows path answers the same as a posix path', () => {
 // ---------------------------------------------------------------------------
 
 const SEMICOLON_FINDING = {
-  line: 3, rule: 'semicolon', sev: 'error', msg: 'no semicolons. Write two sentences.',
+  line: 3, rule: 'semicolon', cls: POLISH, msg: 'no semicolons. Write two sentences.',
 };
 
-test('an error renders with the label, the line and the rule', () => {
+test('a finding renders with the label, the line, the class and the rule', () => {
   assert.equal(
     format([SEMICOLON_FINDING], 'commit-msg'),
-    'commit-msg:3: ERROR [semicolon] no semicolons. Write two sentences.',
+    'commit-msg:3: polish [semicolon] no semicolons. Write two sentences.',
   );
 });
 
-test('a warning keeps the column alignment of an error', () => {
-  const warned = { ...SEMICOLON_FINDING, sev: 'warn' };
-  const lines = format([SEMICOLON_FINDING, warned], 'commit-msg').split('\n');
-  assert.equal(lines.length, 2);
-  assert.equal(lines[0].indexOf('['), lines[1].indexOf('['));
+test('the class a finding renders under comes from its rule', () => {
+  assert.equal(classOf('semicolon'), POLISH);
+  assert.equal(classOf('readability'), COMPREHENSION);
+  assert.equal(classOf('punctuation'), ENCODING);
 });
 
 test('a finding from another checker renders the same way', () => {
   const finding = {
-    line: 1, rule: 'subject-length', sev: 'error', msg: 'subject is 90 characters, cap is 72.',
+    line: 1,
+    rule: 'subject-length',
+    cls: COMPREHENSION,
+    msg: 'subject is 90 characters, cap is 72.',
   };
   assert.equal(
     format([finding], 'commit-msg'),
-    'commit-msg:1: ERROR [subject-length] subject is 90 characters, cap is 72.',
+    'commit-msg:1: comprehension [subject-length] subject is 90 characters, cap is 72.',
   );
 });
 
@@ -291,19 +296,18 @@ const ITEM_THREE = `- Public/known agent prompts ${DASH} **fetch real ones** `
 
 test('a sentence ends where its list item ends', needsTable, () => {
   const text = [ITEM_ONE, ITEM_TWO, ITEM_THREE].join('\n');
-  // hard-word is advice, not a boundary signal, so it stays out of this list.
+  // Polish findings are not boundary signals, so they stay out of this list.
   const found = lint(text, { tier: 'strict', kind: 'markdown' })
-    .filter((v) => v.sev === 'error');
+    .filter((v) => blocks(v.cls));
   assert.deepEqual(found.map((v) => `${v.line} ${v.rule}`), [
     '1 punctuation',
     '2 clause-pileup',
     '2 punctuation',
-    '2 semicolon',
     '3 clause-pileup',
     '3 punctuation',
   ]);
   assert.match(found[1].msg, /4 clauses/);
-  assert.match(found[4].msg, /5 clauses/);
+  assert.match(found[3].msg, /5 clauses/);
 });
 
 // ---------------------------------------------------------------------------

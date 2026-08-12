@@ -7,11 +7,16 @@
  * Comment lines, trailers, change tags, and generated merge or revert
  * messages are skipped.
  *
+ * Encoding and comprehension findings reject the commit. Polish findings
+ * print and let it through. A commit message is short, so it gets no budget
+ * on the two classes that block.
+ *
  * Exit 1 rejects the commit.
  */
 
 import { readFileSync } from 'node:fs';
 import { lint, isDisabled, format } from './ste-lint.mjs';
+import { blocks, classOf } from './rule-classes.mjs';
 
 const SUBJECT_MAX = 72;
 const SKIP_SUBJECT = /^(Merge|Revert|fixup!|squash!|Applying|Rebase)/;
@@ -56,7 +61,12 @@ function main() {
 
   const problems = [];
   if (subject.length > SUBJECT_MAX) {
-    problems.push({ line: subjectIndex + 1, sev: 'error', rule: 'subject-length', msg: `subject is ${subject.length} characters, cap is ${SUBJECT_MAX}.` });
+    problems.push({
+      line: subjectIndex + 1,
+      rule: 'subject-length',
+      cls: classOf('subject-length'),
+      msg: `subject is ${subject.length} characters, cap is ${SUBJECT_MAX}.`,
+    });
   }
   // The subject is a fragment. Check its vocabulary only.
   problems.push(...lint(subject, { tier: 'flavored', kind: 'markdown' })
@@ -64,14 +74,27 @@ function main() {
     .map((v) => ({ ...v, line: subjectIndex + 1 })));
   problems.push(...lint(body, { tier: 'flavored', kind: 'markdown' }));
 
-  const errors = problems.filter((v) => v.sev === 'error');
-  if (!errors.length) process.exit(0);
+  const errors = problems.filter((v) => blocks(v.cls));
+  const advice = problems.filter((v) => !blocks(v.cls));
+  if (!errors.length) {
+    if (advice.length) {
+      process.stderr.write(
+        `\nste-lint took this commit message. Advice only, not blocking:\n\n`
+        + `${format(advice, 'commit-msg')}\n\n`,
+      );
+    }
+    process.exit(0);
+  }
 
+  const adviceReport = advice.length
+    ? `\nadvice only, never blocking:\n${format(advice, 'commit-msg')}\n`
+    : '';
   process.stderr.write(
     `\nste-lint rejected this commit message. ${errors.length} violations:\n\n`
-    + `${format(errors, 'commit-msg')}\n\n`
-    + 'Rewrite it: short common words, active voice, no semicolons, no contractions,\n'
-    + 'ASCII punctuation only. To bypass once, commit with --no-verify.\n\n',
+    + `${format(errors, 'commit-msg')}\n${adviceReport}\n`
+    + 'Rewrite the sentences it quoted. Short common words, active voice, one\n'
+    + 'clause per sentence, ASCII punctuation. To bypass once, commit with\n'
+    + '--no-verify.\n\n',
   );
   process.exit(1);
 }

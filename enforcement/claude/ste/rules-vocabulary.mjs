@@ -7,7 +7,7 @@
 
 import {
   ADVERB_WORDS, BANNED_WORDS, INFLECTIONS, NOMINALIZATION_PATTERN,
-  OPENER_PATTERN, WEAK_OPENER_PATTERN,
+  OPENER_PATTERN, SELF_GRADE_PATTERN, WEAK_OPENER_PATTERN,
 } from './vocabulary.mjs';
 
 /** A writer spells a compound with a hyphen or with a space, so the
@@ -44,7 +44,6 @@ function bannedWordFindings(block) {
   for (const [pattern, advice] of BANNED_PATTERNS) {
     found.push(...findAll(block, pattern, (hit) => ({
       rule: 'slop-word',
-      sev: 'error',
       msg: `"${hit}" - ${advice}.`,
     })));
   }
@@ -57,18 +56,19 @@ export function vocabularyRules(block) {
     ...bannedWordFindings(block),
     ...findAll(block, OPENER_PATTERN, (hit) => ({
       rule: 'filler',
-      sev: 'error',
       msg: `"${hit}" - delete it, state the fact.`,
     })),
     ...findAll(block, NOMINALIZATION_PATTERN, (hit) => ({
       rule: 'nominalization',
-      sev: 'error',
       msg: `"${hit}" - use the verb directly.`,
     })),
     ...findAll(block, WEAK_OPENER_PATTERN, (hit) => ({
       rule: 'weak-opener',
-      sev: 'warn',
       msg: `"${hit}" - name the subject.`,
+    })),
+    ...findAll(block, SELF_GRADE_PATTERN, (hit) => ({
+      rule: 'self-grade',
+      msg: `"${hit}" - do not grade your own work. Write what happened.`,
     })),
   ];
 }

@@ -14,6 +14,7 @@ import {
 } from './rules-readability.mjs';
 import { textMeasure } from './readability.mjs';
 import { lint, classify } from './ste-lint.mjs';
+import { blocks, classOf, COMPREHENSION, POLISH } from './rule-classes.mjs';
 
 const REAL_TABLE_PATH = join(process.env.USERPROFILE || process.env.HOME || '', '.claude', 'ste', 'data', 'word-freq.txt');
 
@@ -144,8 +145,8 @@ test('hard-word is advice in both tiers, so it never blocks a write', () => {
   withFixture(() => {
     const flavored = hardWordRule(block('The zoological survey took a week.'), 'flavored');
     const strict = hardWordRule(block('The zoological survey took a week.'), 'strict');
-    assert.equal(flavored[0].sev, 'warn');
-    assert.equal(strict[0].sev, 'warn');
+    assert.equal(classOf(flavored[0].rule), POLISH);
+    assert.equal(classOf(strict[0].rule), POLISH);
   });
 });
 
@@ -394,7 +395,7 @@ test('long sentences built from rare words produce exactly one readability viola
     const found = readabilityRule(block(text), 'flavored');
     assert.equal(found.length, 1);
     assert.equal(found[0].rule, 'readability');
-    assert.equal(found[0].sev, 'error');
+    assert.equal(classOf(found[0].rule), COMPREHENSION);
   });
 });
 
@@ -484,7 +485,7 @@ test('real table: this repository\'s own prose produces no readability violation
   }
 });
 
-test('real table: this repository\'s own prose produces no error-severity '
+test('real table: this repository\'s own prose produces no blocking '
   + 'hard-word, noun-stack, or clause-pileup violation', {
   skip: !existsSync(REAL_TABLE_PATH) || REPO_PROSE_FILES.length === 0,
 }, () => {
@@ -494,8 +495,8 @@ test('real table: this repository\'s own prose produces no error-severity '
     const text = readFileSync(file, 'utf8');
     const info = classify(file);
     const found = lint(text, { tier: info.tier, kind: info.kind, ext: info.ext });
-    const hits = found.filter((v) => watched.has(v.rule) && v.sev === 'error');
-    assert.deepEqual(hits.map((v) => v.msg), [], `unexpected error-severity hits in ${file}`);
+    const hits = found.filter((v) => watched.has(v.rule) && blocks(v.cls));
+    assert.deepEqual(hits.map((v) => v.msg), [], `unexpected blocking hits in ${file}`);
   }
 });
 
@@ -592,4 +593,29 @@ test('real table: length alone crosses the flavored ceiling with ordinary words'
   const found = readabilityRule(block(text), 'flavored');
   assert.equal(found.length, 1);
   assert.equal(found[0].rule, 'readability');
+});
+
+test('the readability report quotes the hardest sentence in the block', () => {
+  withReadabilityFixture(() => {
+    const text = `The rule is easy to read. ${repeatSentence('zqorva', 20)}`;
+    const found = readabilityRule(block(text), 'flavored');
+    assert.equal(found.length, 1);
+    assert.match(found[0].msg, /Rewrite this sentence: zqorva zqorva/);
+    assert.doesNotMatch(found[0].msg, /easy to read/);
+  });
+});
+
+test('the readability report points at the line the hard sentence sits on', () => {
+  withReadabilityFixture(() => {
+    const text = `The rule is easy to read.\n${repeatSentence('zqorva', 20)}`;
+    const found = readabilityRule(block(text, 4), 'flavored');
+    assert.equal(found[0].line, 6);
+  });
+});
+
+test('a quoted sentence past the cut ends in an ASCII ellipsis', () => {
+  withReadabilityFixture(() => {
+    const found = readabilityRule(block(repeatSentence('zqorva', 30)), 'flavored');
+    assert.match(found[0].msg, /\.\.\.$/);
+  });
 });

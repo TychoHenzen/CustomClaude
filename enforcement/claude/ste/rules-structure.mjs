@@ -7,9 +7,13 @@
  * or preposition between them. A clause pileup buries one main idea under
  * too many dependent clauses. Neither needs a part of speech tagger. Both
  * use word lists and adjacency checks as a stand-in for real grammar.
+ *
+ * A third rule here counts sentences rather than words. A paragraph past
+ * six sentences is carrying more than one topic.
  */
 
 import { splitSentences } from './ste-lint.mjs';
+import { quoteSentence } from './rule-classes.mjs';
 
 // ---------------------------------------------------------------------------
 // noun-stack
@@ -70,15 +74,16 @@ const ABSTRACT_NOUN_SUFFIXES = [
  * Run length for a noun stack. A run of content words at or past this
  * length is long enough to check for stacked nouns.
  *
- * An earlier step measured this repository's own prose at run length 3. It found
- * five false hits, and every one of them read as an ordinary technical
- * phrase, not a confusing pile of nouns. The one phrase this rule must
- * still catch is the owner's own example. Read the test file for both
- * lists. The owner's example runs 4 words long, one word past every false
- * hit found here. Raising the minimum to 4 clears every false hit in this
- * repository and still catches the owner's example. A rule that only ever
- * fired on acceptable prose was not a working rule. This step raises the
- * bar instead of lowering it further.
+ * An earlier step measured this repository's own prose at run length 3. It
+ * found five false hits, and every one of them read as an ordinary technical
+ * phrase rather than a confusing pile of nouns. The one phrase this rule
+ * must still catch is the owner's own example. Read the test file for both
+ * lists.
+ *
+ * The owner's example runs 4 words long, one word past every false hit found
+ * here. Raising the minimum to 4 clears every false hit in this repository
+ * and still catches that example. A rule that only ever fired on acceptable
+ * prose was not a working rule, so this bar went up rather than down.
  */
 export const NOUN_STACK_MIN_RUN_LENGTH = 4;
 
@@ -171,7 +176,6 @@ export function nounStackRule(block) {
       found.push({
         line: lineOf(block, run[0].index),
         rule: 'noun-stack',
-        sev: 'error',
         msg: `"${phrase}" chains ${run.length} nouns with no verb between them. `
           + 'Rewrite it as a sentence with a verb.',
       });
@@ -215,12 +219,41 @@ export const CLAUSE_PILEUP_THRESHOLD = 3;
  *  Both "a, b, and c" and "a, b and c" carry one. */
 const LIST_CONJUNCTION_PATTERN = /\b(and|or)\b/i;
 
+/** Items this many or more, all opening on the same word, read as a list
+ *  however the writer ended it. */
+const MIN_REPEATED_OPENERS = 3;
+
+/** The first word of text, with a leading article levelled to one form. A
+ *  writer switches between `a` and `an` to suit the next word, so the two
+ *  open a list the same way. */
+function openingWord(text) {
+  const first = (text.match(/[A-Za-z]+/) || [''])[0].toLowerCase();
+  return first === 'an' || first === 'the' ? 'a' : first;
+}
+
+/**
+ * True when the comma-separated parts of sentence open on the same word,
+ * MIN_REPEATED_OPENERS times or more. One example is `no em dash, no en
+ * dash, no curly quotes`. A repeated opener marks parallel structure. A list
+ * that ends on a colon carries no conjunction to give it away.
+ */
+function hasRepeatedOpeners(sentence) {
+  const counts = new Map();
+  for (const part of sentence.split(',')) {
+    const word = openingWord(part);
+    if (!word) continue;
+    counts.set(word, (counts.get(word) || 0) + 1);
+  }
+  return [...counts.values()].some((n) => n >= MIN_REPEATED_OPENERS);
+}
+
 /** True when sentence reads as a comma list of three or more parallel
- *  items, not a chain of clauses. A list needs two commas or more, plus a
- *  conjunction that joins its last item. */
+ *  items, not a chain of clauses. A list needs two commas or more, then
+ *  either a conjunction joining its last item or a repeated opener. */
 function looksLikeParallelList(sentence) {
   const commaCount = (sentence.match(/,/g) || []).length;
-  return commaCount >= 2 && LIST_CONJUNCTION_PATTERN.test(sentence);
+  if (commaCount < 2) return false;
+  return LIST_CONJUNCTION_PATTERN.test(sentence) || hasRepeatedOpeners(sentence);
 }
 
 /** True when text carries a real word, so it can hold a clause. Masking a
@@ -273,13 +306,46 @@ export function clausePileupRule(block) {
       found.push({
         line: lineOf(block, s.offset),
         rule: 'clause-pileup',
-        sev: 'error',
         msg: `sentence carries ${count} clauses, past the cap of ${CLAUSE_PILEUP_THRESHOLD}. `
-          + 'Split it into shorter sentences.',
+          + `Split it into shorter sentences. Rewrite this sentence: ${quoteSentence(s.text)}`,
       });
     }
 
     return found;
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// long-paragraph
+// ---------------------------------------------------------------------------
+
+/**
+ * Sentences one paragraph may carry. The style asks for one topic per
+ * paragraph and six sentences at most. A block here is one paragraph, one
+ * bullet, or one heading, so the count needs no paragraph detection of its
+ * own.
+ */
+export const PARAGRAPH_SENTENCE_CAP = 6;
+
+/**
+ * Report a block that runs past the sentence cap. A heading is one line and
+ * cannot pile up, so it is skipped. Never throws.
+ */
+export function longParagraphRule(block) {
+  try {
+    if (block.heading) return [];
+    const sentences = splitSentences(block.text);
+    if (sentences.length <= PARAGRAPH_SENTENCE_CAP) return [];
+
+    return [{
+      line: block.line + 1,
+      rule: 'long-paragraph',
+      msg: `paragraph runs ${sentences.length} sentences, cap is `
+        + `${PARAGRAPH_SENTENCE_CAP}. One topic per paragraph. Break it where `
+        + 'the topic changes.',
+    }];
   } catch {
     return [];
   }

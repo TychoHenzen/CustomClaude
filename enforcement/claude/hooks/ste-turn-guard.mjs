@@ -7,9 +7,13 @@
  * calls, so the model met one violation at a time and paid a round trip for
  * each. This gate sees the whole turn at once.
  *
- * A file may gain up to NEW_BUDGET fresh violations and still pass. Encoding
- * characters get no budget, because they corrupt the file when it is read back
- * and no later reader spots them by eye.
+ * Only a comprehension finding spends the budget. A polish finding prints
+ * and never blocks, whatever the count. The gate used to weigh every rule
+ * the same, so deleting two semicolons bought a file out of a readability
+ * finding. That taught the wrong lesson, and this is where it was taught.
+ *
+ * Encoding characters get no budget, because they corrupt the file when it is
+ * read back and no later reader spots them by eye.
  *
  * The report also names problems the turn did not create, so the model can fix
  * what is worth fixing while it still holds the file.
@@ -20,6 +24,7 @@
 
 import { readFileSync } from 'node:fs';
 import { lint, classify } from '../ste/ste-lint.mjs';
+import { COMPREHENSION, ENCODING } from '../ste/rule-classes.mjs';
 import { addedRanges, inRanges } from '../lib/changed-lines.mjs';
 import { byFile, clear, read } from '../ste/pending.mjs';
 import {
@@ -28,12 +33,12 @@ import {
 } from '../ste/sentinel.mjs';
 
 const NEW_BUDGET = 3;
-const ENCODING_RULE = 'punctuation';
 const MAX_BYTES = 400_000;
 const MAX_FRESH = 25;
 const MAX_EXISTING = 10;
 
-/** Split this file's error findings into the turn's own and everyone else's. */
+/** Split this file's blocking findings into the turn's own and everyone
+ *  else's. Polish findings ride along as advice, whichever turn wrote them. */
 function review(file, records) {
   const info = classify(file);
   if (!info.kind) return null;
@@ -51,10 +56,10 @@ function review(file, records) {
 
   const ranges = addedRanges(records, text);
   const found = lint(text, { tier: info.tier, kind: info.kind, ext: info.ext });
-  const errors = found.filter((v) => v.sev === 'error');
+  const errors = found.filter((v) => v.cls === ENCODING || v.cls === COMPREHENSION);
   const fresh = errors.filter((v) => inRanges(v.line, ranges));
   const advice = found
-    .filter((v) => v.sev !== 'error')
+    .filter((v) => v.cls !== ENCODING && v.cls !== COMPREHENSION)
     .filter((v) => inRanges(v.line, ranges));
   return {
     file,
@@ -68,13 +73,13 @@ function review(file, records) {
 
 /** Why this file blocks the turn, or null when it stays inside its budget. */
 function verdict(result) {
-  const encoding = result.fresh.filter((v) => v.rule === ENCODING_RULE);
-  const rest = result.fresh.filter((v) => v.rule !== ENCODING_RULE);
+  const encoding = result.fresh.filter((v) => v.cls === ENCODING);
+  const rest = result.fresh.filter((v) => v.cls !== ENCODING);
   if (encoding.length) {
     return `${encoding.length} new encoding violation(s), which have no budget`;
   }
   if (rest.length > NEW_BUDGET) {
-    return `${rest.length} new violations, budget is ${NEW_BUDGET}`;
+    return `${rest.length} new sentences the reader cannot follow, budget is ${NEW_BUDGET}`;
   }
   return null;
 }
@@ -109,9 +114,10 @@ function renderReport(blocked, checked) {
     '',
     blocked.map(renderFile).join('\n\n'),
     '',
-    `Every rule but encoding allows ${NEW_BUDGET} new violations per file. Fix the ones`,
-    'worth fixing and leave the rest. Use short common words. Write one instruction',
-    'per sentence. Use no semicolons and no em dash, in any spelling.',
+    'Rewrite the sentences quoted above. A shorter sentence with commoner words and',
+    'one clause is what clears this. Renaming a word or deleting a mark will not.',
+    `Each file may gain ${NEW_BUDGET} of these per turn. Advice lines never block, so`,
+    'leave them unless the fix is free.',
     'This checks prose only. Code, identifiers and command syntax are exempt.',
     'To waive this once: touch .prose-skip',
     'To exempt a whole file: echo \'{"exempt": true}\' > .prose-skip',

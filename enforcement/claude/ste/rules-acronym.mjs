@@ -151,7 +151,6 @@ export function acronymRule(text) {
       found.push({
         line: lineNumberAt(text, m.index),
         rule: 'acronym',
-        sev: 'error',
         msg: `"${acronym}" is an acronym the reader cannot resolve. Spell it out `
           + 'on first use, or put its meaning in brackets right after it.',
       });

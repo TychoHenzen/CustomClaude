@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { STRAIN_THRESHOLD, strainOf, tangledSentenceRule } from './rules-syntax.mjs';
+import { classOf, COMPREHENSION } from './rule-classes.mjs';
 
 function block(text, line = 0) {
   return { line, text, heading: false };
@@ -23,7 +24,7 @@ test('the sample sentence is reported', () => {
   const found = tangledSentenceRule(block(TANGLED));
   assert.equal(found.length, 1);
   assert.equal(found[0].rule, 'tangled-sentence');
-  assert.equal(found[0].sev, 'error');
+  assert.equal(classOf(found[0].rule), COMPREHENSION);
   assert.equal(found[0].line, 1);
 });
 

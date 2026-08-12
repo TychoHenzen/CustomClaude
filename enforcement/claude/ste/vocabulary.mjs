@@ -82,3 +82,56 @@ export const WEAK_OPENER_PATTERN = new RegExp(
   '\\bthere\\s+(?:is|are|was|were)\\s+(?:a|an|no|some|many|several)\\b',
   'gi',
 );
+
+/**
+ * Adverbs that pass a verdict on work. The style asks for what happened,
+ * not for a grade on it. Write "the rule matched seven pieces of prose".
+ * Drop the adverb that grades the match.
+ *
+ * `properly` and `cleanly` are missing on purpose. Both carry their weight
+ * in ordinary instruction prose, as in `shut the handle cleanly`, so
+ * flagging them would cost more than it buys.
+ */
+const GRADING_ADVERBS = ['correctly', 'successfully', 'perfectly', 'flawlessly'];
+
+/** Phrases that grade without an adverb. */
+const GRADING_PHRASES = ['as expected', 'works great', 'a real defect', 'a real bug'];
+
+/**
+ * A pattern for phrase that reads a leading capital as well, and any run of
+ * white space between its words.
+ *
+ * This rule cannot run case-insensitive. It tells a verb from an
+ * abbreviation by looking for one small letter, and the insensitive flag
+ * makes every letter small. So each word carries its own capital instead.
+ */
+function eitherCase(phrase) {
+  const spaced = phrase.replace(/ /g, '\\s+');
+  return `[${spaced[0].toUpperCase()}${spaced[0]}]${spaced.slice(1)}`;
+}
+
+const ADVERB_GROUP = GRADING_ADVERBS.map(eitherCase).join('|');
+
+/** How far behind its verb a grading adverb may sit and still count, as in
+ *  `reads it correctly`. The span never crosses a sentence end. */
+const OBJECT_GAP = '[^.!?]{0,15}?';
+
+/**
+ * A grading adverb counts only where it lands on a verb. One example is the
+ * adverb in front of a past-tense verb. Another is the same adverb one short
+ * object behind its verb. The bare adverb alone reports too much. It fires
+ * on a question that grades nothing and asks something.
+ *
+ * A verb here is a word ending in `ed`, `es`, or `s` that carries at least
+ * one small letter. No tagger stands behind that, the same way no tagger
+ * stands behind rules-syntax.mjs. The small letter keeps an abbreviation out
+ * of the verb slot, so `would a TTS read it correctly` reports nothing.
+ */
+const VERBISH = '\\b(?=\\w*[a-z])\\w+(?:ed|es|s)\\b';
+
+export const SELF_GRADE_PATTERN = new RegExp(
+  `\\b(?:${ADVERB_GROUP})\\s+${VERBISH}`
+  + `|${VERBISH}${OBJECT_GAP}\\s(?:${ADVERB_GROUP})\\b`
+  + `|\\b(?:${GRADING_PHRASES.map(eitherCase).join('|')})\\b`,
+  'g',
+);

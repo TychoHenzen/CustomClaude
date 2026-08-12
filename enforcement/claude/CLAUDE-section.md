@@ -2,11 +2,13 @@
 
 Caveman style decides what to cut from a chat reply: filler, pleasantries,
 narration, hedging. The writing rules below decide the form of whatever
-survives the cut. Where the two disagree, caveman keeps article-dropping and
-fragments in chat replies only. Every other rule below still applies there.
+survives the cut. Where the two disagree, the writing rules win, including in
+chat replies. A reader hears a reply read aloud with no tool output beside it,
+so a dropped article or a bare fragment costs them a re-read. Cut the sentence
+instead of cutting the words inside it.
 
-Subagent prompts, plans, commit messages, file content, and code stay normal
-prose. They get the full writing rules, not caveman.
+Subagent prompts, plans, commit messages, file content, and code get the same
+rules.
 
 ## Writing: plain, readable prose
 
@@ -49,8 +51,15 @@ SENTENCES
 - One instruction per sentence. Cap 20 words for procedures, 25 elsewhere.
 - Contractions are fine. The checker does not flag them.
 - No semicolons. Write two sentences instead.
-- No em dash, in any spelling. That includes the literal character and every
-  HTML entity form. Every other punctuation mark is fine.
+- No em dash, no en dash, no curly quotes, no ellipsis character, no arrows.
+  That covers the literal character and every HTML entity form. Type `-`,
+  `"`, `'`, `...` and `->` instead. These corrupt when the file is read back,
+  so they are the one thing that blocks on its own.
+- Never name a step, phase, or agent by ID alone. Not `S10 came back clean`.
+  Say what it did. A backticked label passes, because the checker reads it as
+  code.
+- Do not grade your own work. Write what happened, not `correctly refused` or
+  `hit a real defect`.
 - Rewrite abstract noun stacks into plain sentences. Not `config resolution
   order divergence`. Say `the two paths read config in a different order`.
   The checker flags a stack of four or more content words that carries two or
@@ -58,12 +67,13 @@ SENTENCES
 - Keep the subject next to its verb. Do not hold an opening word open across a
   whole clause. Not `How should a HELM answer that disclaims knowledge be
   allowed to name the thing it disclaims?`. Say `A HELM answer disclaims
-  knowledge. May it name what it disclaims?`. The checker counts three kinds
-  of strain. An auxiliary sits more than four words from its verb. A clause
-  is wedged between the two. The voice is passive. Three at once fails.
+  knowledge. May it name what it disclaims?`.
+- The checker counts three kinds of strain in that shape. An auxiliary sits
+  more than four words from its verb. A clause is wedged between the two. The
+  voice is passive. Three at once fails.
 
 STRUCTURE
-- One topic per paragraph, six sentences at most.
+- One topic per paragraph, six sentences at most. The checker counts them.
 - For steps, use a numbered list. One action per item, imperative form.
 - Put a condition before its command.
 
@@ -71,12 +81,24 @@ Two tiers. Strict covers runbooks, procedures, install and security docs, and
 error messages. It uses a 20-word cap and a tighter readability ceiling.
 Flavored covers everything else. It uses a 25-word cap and a looser ceiling.
 
-The rare-word check is advice in both tiers and never blocks. It asks two
-questions before it speaks. Is the word rare in general English? Does this
-project already use it? A word the project writes in two files, or five times
-over, is never flagged. So a precise term stays precise. The research is
-clear. Swapping technical words for plainer ones measures easier and reads
-worse.
+Three classes decide what a finding costs. An encoding character blocks on its
+own, because it corrupts the file. A comprehension finding blocks once the
+count passes the budget, because the reader cannot follow the sentence. A
+polish finding never blocks, however many there are. A semicolon, a marketing
+adjective, a missing acronym and a rare word are all polish. Fix them while
+you hold the file, and never spend a turn on one.
+
+Every finding that blocks quotes the sentence it wants rewritten. Rewrite that
+sentence. Deleting a mark somewhere else in the file does not clear it, and
+used to.
+
+The rare-word check is advice and never blocks. It asks two questions before
+it speaks. Is the word rare in general English? Does this project already use
+it? A word the project writes in two files, or five times over, is never
+flagged.
+
+So a precise term stays precise. The research is clear. Swapping technical
+words for plainer ones measures easier and reads worse.
 
 Not for marketing copy or essays. These rules trade voice for clarity on
 purpose.
@@ -89,10 +111,11 @@ node ~/.claude/ste/ste-lint.mjs --tier=strict path/to/file.md
 ```
 
 File checks run once, at the end of the turn, over every file the turn wrote.
-A single write is never blocked on its own. Each file may gain up to three new
-violations and still pass. Encoding characters get no budget, because they
-corrupt the file when it is read back. The report also names problems the turn
-did not create, so you can fix what is worth fixing.
+A single write is never blocked on its own. One turn may add three findings of
+the comprehension class to a file and still pass. A chat reply gets two.
+Encoding characters get no budget, because they corrupt the file when it is
+read back. The report also names problems the turn did not create, so you can
+fix what is worth fixing.
 
 Blocked and sure the prose is right? Run `touch .prose-skip` to waive the next
 turn. Run `echo '{"exempt": true}' > .prose-skip` to exempt the whole file.

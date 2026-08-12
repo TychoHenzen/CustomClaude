@@ -7,6 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { classify, format, isDisabled, lint } from './ste-lint.mjs';
+import { blocks } from './rule-classes.mjs';
 
 const SETTING = /^--(tier|format|name)=(.*)$/;
 
@@ -78,7 +79,7 @@ function writeReport(results, style) {
 }
 
 function blocking(result) {
-  return result.violations.some((finding) => finding.sev === 'error');
+  return result.violations.some((finding) => blocks(finding.cls));
 }
 
 /** Run the command line and answer with the exit status. */

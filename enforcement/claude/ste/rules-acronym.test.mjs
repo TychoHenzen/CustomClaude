@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { acronymRule } from './rules-acronym.mjs';
+import { classOf, POLISH } from './rule-classes.mjs';
 import { setCorpusRoot } from './local-corpus.mjs';
 import { lint } from './ste-lint.mjs';
 
@@ -26,7 +27,7 @@ test('an acronym with no expansion anywhere is reported', () => {
   const found = acronymRule('The HELM answer names the thing it disclaims.');
   assert.deepEqual(words(found), ['HELM']);
   assert.equal(found[0].rule, 'acronym');
-  assert.equal(found[0].sev, 'error');
+  assert.equal(classOf(found[0].rule), POLISH);
 });
 
 test('an acronym spelled out anywhere in the file is left alone', () => {

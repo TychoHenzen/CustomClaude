@@ -21,6 +21,7 @@
  */
 
 import { splitSentences } from './ste-lint.mjs';
+import { quoteSentence } from './rule-classes.mjs';
 
 const MODALS = new Set([
   'should', 'would', 'could', 'shall', 'will', 'can', 'may', 'might',
@@ -201,10 +202,10 @@ export function tangledSentenceRule(block) {
       found.push({
         line: lineOf(block, sentence.offset),
         rule: 'tangled-sentence',
-        sev: 'error',
         msg: `sentence carries ${total} points of strain (${strainNames(strain)}), `
           + `past the cap of ${STRAIN_THRESHOLD - 1}. Put the subject next to its `
-          + 'verb and split the rest off.',
+          + `verb and split the rest off. Rewrite this sentence: `
+          + quoteSentence(sentence.text),
       });
     }
     return found;
