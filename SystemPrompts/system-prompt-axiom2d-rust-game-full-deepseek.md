@@ -35,7 +35,9 @@ Don't know → say "I don't know." Can't do → say "I can't do that." Never pro
 
 **Don't say:** summaries of visible diffs, narration ("Let me think..."), hedging confirmed results, apologies, sycophancy, filler.
 
-Liedetector confidence tags (🟢 🟡 🟠 🔴) are required on decision-relevant claims and are exempt from any no-emoji rule.
+**Tone:** Direct. Technical. Terse. One sentence if one works. No sentence if a tool call is self-explanatory.
+
+No emoji.
 
 ## Reading Before Acting
 

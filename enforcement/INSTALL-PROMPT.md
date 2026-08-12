@@ -1,9 +1,9 @@
 # Prompt: install the writing and code structure enforcement
 
-`CustomClaude.ps1` runs this install on every full launch. It copies the trees
-and writes `~/.claude/enforcement.md`. It adds one `@enforcement.md` include
-line to `~/.claude/CLAUDE.md`. It merges the hook entries. It sets
-`core.hooksPath` when that value is empty.
+`CustomClaude.ps1` runs this install on every full launch. It copies the trees.
+It merges the hook entries. It sets `core.hooksPath` when that value is empty.
+It writes no rule text, because the rules ship as the Natural output style from
+the `natural-output-style` plugin.
 
 Use the prompt below only for a machine without the
 launcher, or to check the result by hand.
@@ -48,8 +48,7 @@ Six more decisions that already cost debugging time:
   block an unrelated edit.
 - A markdown code span may wrap one line. The mask allows one newline inside a
   span. Without that, a rule example trips its own rule.
-- Caveman reply style and the sentence rules disagree about articles. The
-  reply hook checks vocabulary, filler, nominalization, punctuation, and
+- The reply hook checks vocabulary, filler, nominalization, punctuation, and
   hard-word only. It never checks sentence length or sentence structure on
   chat. `hard-word` is advisory there. It never blocks a reply on its own.
 - The trailer pattern in the commit checker lists known git trailer keys. A
@@ -70,18 +69,16 @@ Six more decisions that already cost debugging time:
     extra step. On a machine without the launcher, run
     `node ~/.claude/ste/build-word-freq.mjs` by hand. Without the table,
     `hard-word` and `readability` both fall back instead of failing.
-2. Read `~/.claude/CLAUDE.md`. Find the section about plain language or word
-   choice, if one exists.
-3. Replace that section with the text in `enforcement/claude/CLAUDE-section.md`.
-   If no such section exists, append the text.
-4. Append the text in `enforcement/claude/CLAUDE-code-section.md` as well.
-5. Keep any existing rule about ASCII punctuation. The new section points at it.
-6. Install the `quality-guard` plugin from the dod-guard marketplace. It
+2. Install the rule text. It ships as the `natural-output-style` plugin from
+   the dod-guard marketplace. Install the plugin, then select the style with
+   `/output-style Natural`. Only one output style loads at a time, so a machine
+   left on `Explanatory` or `Learning` gets none of these rules.
+3. Install the `quality-guard` plugin from the dod-guard marketplace. It
    carries the code gate, its scanner and the `/quality-refactor` skill. No
    `settings.json` entry is needed for it. The plugin declares its own hook.
-7. Open `~/.claude/settings.json`. Find the node command used by other hooks.
+4. Open `~/.claude/settings.json`. Find the node command used by other hooks.
    Use the same path. Use plain `node` if no other hook names one.
-8. Add this entry to the `PostToolUse` array:
+5. Add this entry to the `PostToolUse` array:
 
 ```json
 {
@@ -96,7 +93,7 @@ Six more decisions that already cost debugging time:
 }
 ```
 
-9. Add this entry to the `Stop` array:
+6. Add this entry to the `Stop` array. It lints the last chat reply:
 
 ```json
 {
@@ -110,10 +107,26 @@ Six more decisions that already cost debugging time:
 }
 ```
 
-9a. Add this entry to the `PreToolUse` array. It refuses a `git commit` while
-    a prose waiver stays unacknowledged. It still works when a repository
-    points `core.hooksPath` at its own directory and shadows the pre-commit
-    hook:
+7. Add this entry to the `Stop` array as well. It lints every prose file the
+   turn wrote, which the per-write hook cannot do while the turn is still
+   running:
+
+```json
+{
+  "hooks": [
+    {
+      "type": "command",
+      "command": "node \"$HOME/.claude/hooks/ste-turn-guard.mjs\"",
+      "timeout": 20
+    }
+  ]
+}
+```
+
+8. Add this entry to the `PreToolUse` array. It refuses a `git commit` while
+   a prose waiver stays unacknowledged. It still works when a repository
+   points `core.hooksPath` at its own directory and shadows the pre-commit
+   hook:
 
 ```json
 {
@@ -128,12 +141,12 @@ Six more decisions that already cost debugging time:
 }
 ```
 
-10. Keep every hook that is already in those arrays. Merge, do not replace.
-11. Verify that `settings.json` still parses as JSON.
-12. Run `chmod +x ~/.claude/git-hooks/commit-msg`.
-13. Read the current value of `git config --global core.hooksPath`.
-14. If that value is empty, run `git config --global core.hooksPath "$HOME/.claude/git-hooks"`.
-15. If that value is not empty, stop and report it. Do not overwrite it.
+9. Keep every hook that is already in those arrays. Merge, do not replace.
+10. Verify that `settings.json` still parses as JSON.
+11. Run `chmod +x ~/.claude/git-hooks/commit-msg`.
+12. Read the current value of `git config --global core.hooksPath`.
+13. If that value is empty, run `git config --global core.hooksPath "$HOME/.claude/git-hooks"`.
+14. If that value is not empty, stop and report it. Do not overwrite it.
 
 The system prompt components need no work. `SystemPrompts/basis/components/ste-writing.md`,
 the structure gate section in `code-quality.md`, and the `manifest.yaml` entry

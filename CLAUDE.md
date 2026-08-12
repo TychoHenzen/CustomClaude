@@ -40,6 +40,26 @@ the module they gated was never wired into `ste-lint.mjs`.
 Copying a file into `~/.claude` by hand is fine once the repo holds it. That is
 the launcher's job done early, not a place to work.
 
+This tree carries the checker, not the rules it checks. The writing rules ship
+as the Natural output style, from the `natural-output-style` plugin in the
+dod-guard marketplace. Only one output style loads at a time, so a machine left
+on `Explanatory` gets the hooks with none of the rules behind them.
+
+## The system prompt basis has no generator in this repo
+
+`SystemPrompts/basis/` holds the components, the manifest and the eval set. The
+program that reads them lives only in `~/.claude/skills/sysprompt-gen/`, as
+`generate.py` and its `SKILL.md`. Neither file is in any repository.
+
+Two things follow. `SystemPrompts/basis/evals/run.py` imports the generator from
+`<repo>/skills/sysprompt-gen`, a path that does not exist here, so the eval
+suite cannot run from a clone. Point `sys.path` at the real location to run it.
+
+The generator also hardcodes every axis value it accepts. `LAYERS`, `DOMAINS`,
+`BACKENDS` and `STRICTNESS` are sets in that file, and it raises on anything
+outside them. So editing a component is half the work. A layer removed from the
+basis stays valid on the command line until you edit the generator too.
+
 ## Deleting files in CustomClaude.ps1
 
 Use the `Remove-StateFile` helper for single files. Do not call `Remove-Item`.

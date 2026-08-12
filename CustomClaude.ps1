@@ -171,67 +171,9 @@ function Sync-WordFreqTable {
     return 0
 }
 
-# The rule text goes in its own file next to CLAUDE.md. CLAUDE.md itself only
-# ever gains one include line, so a hand-written section there is never touched.
-function Write-EnforcementRules {
-    $parts = @()
-    foreach ($name in @("CLAUDE-section.md", "CLAUDE-code-section.md")) {
-        $path = Join-Path $EnforcementSrc $name
-        if (Test-Path $path) {
-            $parts += ((Get-Content $path -Raw) -replace "`r`n", "`n").TrimEnd()
-        }
-    }
-    if ($parts.Count -eq 0) { return 0 }
-
-    $body = ($parts -join "`n`n") + "`n"
-    $target = Join-Path $ClaudeHome "enforcement.md"
-    if (Test-Path $target) {
-        $current = (Get-Content $target -Raw) -replace "`r`n", "`n"
-        if ($current -eq $body) { return 0 }
-    }
-    [System.IO.File]::WriteAllText($target, $body, $Utf8NoBom)
-    Write-Host "  Enforcement: wrote $target" -ForegroundColor DarkGray
-    return 1
-}
-
-# New include lines join the block of includes at the top, where CLAUDE.md keeps
-# the others. Content below that block stays where the operator put it.
-function Add-EnforcementInclude {
-    $claudeMd = Join-Path $ClaudeHome "CLAUDE.md"
-    $line = "@enforcement.md"
-    if (-not (Test-Path $claudeMd)) {
-        [System.IO.File]::WriteAllText($claudeMd, "$line`n", $Utf8NoBom)
-        Write-Host "  Enforcement: created $claudeMd with $line" -ForegroundColor DarkGray
-        return 1
-    }
-
-    $lines = @(Get-Content $claudeMd)
-    if ($lines -contains $line) { return 0 }
-    $idx = 0
-    while ($idx -lt $lines.Count -and $lines[$idx] -match '^@\S') { $idx++ }
-    $merged = @()
-    if ($idx -gt 0) { $merged += $lines[0..($idx - 1)] }
-    $merged += $line
-    if ($idx -lt $lines.Count) { $merged += $lines[$idx..($lines.Count - 1)] }
-    [System.IO.File]::WriteAllLines($claudeMd, [string[]]$merged, $Utf8NoBom)
-    Write-Host "  Enforcement: added $line to CLAUDE.md" -ForegroundColor Green
-    return 1
-}
-
-# An older install pasted the same rules straight into CLAUDE.md. Two copies in
-# context waste tokens and drift apart, but only the operator may cut theirs.
-function Test-EnforcementDuplicateRules {
-    $claudeMd = Join-Path $ClaudeHome "CLAUDE.md"
-    if (-not (Test-Path $claudeMd)) { return }
-    $text = Get-Content $claudeMd -Raw
-    foreach ($heading in @("## Writing: Simplified Technical English", "## Code structure: ratchet")) {
-        if ($text -match [regex]::Escape($heading)) {
-            Write-Host "  NOTE: CLAUDE.md still holds an inline '$heading' section." -ForegroundColor Yellow
-            Write-Host "        enforcement.md now carries it. Remove the inline copy." -ForegroundColor DarkGray
-        }
-    }
-}
-
+# The writing rules themselves now ship as the Natural output style, from the
+# natural-output-style plugin. So this install copies the checker and wires its
+# hooks, and it writes no rule text into CLAUDE.md at all.
 function New-EnforcementHookEntry {
     param([string]$Matcher, [string]$Script, [int]$TimeoutSec)
 
@@ -361,9 +303,8 @@ function Sync-Enforcement {
         Write-Host "  WARN: $EnforcementSrc missing, enforcement not synced." -ForegroundColor Yellow
         return
     }
-    $changed = (Copy-EnforcementTrees) + (Write-EnforcementRules) + (Add-EnforcementInclude)
+    $changed = (Copy-EnforcementTrees)
     $changed += (Sync-EnforcementEnv) + (Sync-EnforcementHooks) + (Sync-EnforcementGitHooks) + (Sync-WordFreqTable)
-    Test-EnforcementDuplicateRules
     if ($changed -eq 0) {
         Write-Host "  Enforcement: up to date." -ForegroundColor DarkGray
     } else {

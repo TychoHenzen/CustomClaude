@@ -36,7 +36,7 @@ HTML-comment directives so the raw component stays readable markdown:
 | strictness | `>=`, `=` | compares on order `lean < full < paranoid` | `@when strictness>=full`, `@when strictness=paranoid` |
 | backend | `=` | exact match | `@when backend=deepseek`, `@when backend=claude` |
 | domain | `=` | exact match | `@when domain=web`, `@when domain=ml` |
-| layers | `=on` / `=off` | layer toggle state | `@when layers.liedetector=off`, `@when layers.rtk=on` |
+| layers | `=on` / `=off` | layer toggle state | `@when layers.context-mode=off`, `@when layers.rtk=on` |
 
 Only one condition per `@when` (no boolean combinators). Express AND by nesting sections at manifest level or repeating gating in adjacent blocks.
 

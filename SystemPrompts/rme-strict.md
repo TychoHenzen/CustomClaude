@@ -175,7 +175,7 @@ If any item is ✗, do not report done. Fix it first, then re-audit.
 
 Use AskUserQuestion actively. Asking costs 5 seconds. Wrong assumptions cost hours of undo.
 
-Format questions caveman-style — brief, complete, no preamble:
+Format questions briefly. Complete sentences, no preamble:
 
 ```
 [Problem in 2-6 words]

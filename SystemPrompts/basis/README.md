@@ -18,8 +18,8 @@ generator skill:   ../../skills/sysprompt-gen/SKILL.md  (AskUserQuestion front-e
 
 ## Invocation
 
-Conversational (recommended): state the goal — *"create a system prompt for
-python web development, full strictness, DeepSeek backend"* — and the
+Conversational (recommended): state the goal, such as *"create a system prompt
+for python web development, full strictness, DeepSeek backend"*. The
 `sysprompt-gen` skill interviews for any missing axis via AskUserQuestion, then
 runs the engine.
 
@@ -28,7 +28,7 @@ Direct:
 ```
 python ../../skills/sysprompt-gen/generate.py \
   --language python --domain web --strictness full --backend claude \
-  --layers caveman:off,liedetector:off,rtk:off,context-mode:off \
+  --layers rtk:off,context-mode:off \
   --out evals/out-python-web-full-claude.md
 ```
 
@@ -40,25 +40,24 @@ python ../../skills/sysprompt-gen/generate.py \
 | **domain** | web, ml, cli, data, embedded, generic, game | section filter + `@when domain=` |
 | **strictness** | lean < full < paranoid | section filter (`min-strictness`) + `@when strictness>=/=` |
 | **backend** | claude, deepseek, other | `@when backend=` (deepseek adds tool-call scaffolding) |
-| **layers** | caveman, liedetector, rtk, context-mode | `@when layers.<name>=on/off` (default all off) |
+| **layers** | rtk, context-mode | `@when layers.<name>=on/off` (default all off) |
 
 ### Layer toggles
 
 A layer that is **on** means that always-on system already enforces something,
 so the prompt strips its own redundant copy:
 
-- `liedetector` on → strips the standalone "No emoji" rule (its tags use emoji).
-- `caveman` on → drops the explicit terseness rule (caveman already compresses).
-- `rtk` on → adds `rtk`-prefix command guidance instead of raw commands.
-- `context-mode` on → drops the "preserve tool results" guidance.
+- `rtk` on -> adds `rtk`-prefix command guidance instead of raw commands.
+- `context-mode` on -> drops the "preserve tool results" guidance.
 
-Default config = all layers off → standalone, portable prompt.
+Default config = all layers off -> standalone, portable prompt.
 
 ## Extending
 
 **Add a language:** append a block to `values/languages.yaml` with all six keys
 (`test_cmd`, `build_cmd`, `lint_cmd`, `stub_keywords`, `fn_line_limit`,
-`file_line_limit`). No code change — the engine reads the table. Then pass
+`file_line_limit`). No code change is needed, because the engine reads the
+table. Then pass
 `--language <new>`.
 
 **Add a domain:** add the value to `DOMAINS` in `generate.py`, then gate content

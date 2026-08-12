@@ -5,7 +5,6 @@ when-to-include: always
 min-strictness: lean
 domains: all
 backends: all
-layers: [caveman]
 ---
 ## Writing Style: Simplified Technical English
 
@@ -38,12 +37,6 @@ command.
 Two tiers. Strict covers runbooks, procedures, install and security docs, and
 error messages: every rule, 20-word cap. Flavored covers everything else: the
 sentence, voice, and vocabulary rules, with enough word range to read naturally.
-
-<!-- @when layers.caveman=on -->
-Caveman style decides what to cut from a chat reply. This section decides the
-form of what remains. Caveman keeps article-dropping and fragments in chat
-replies only. Files, commit messages, and comments get the full rules above.
-<!-- @end -->
 
 This is not for marketing copy or essays. Simplified Technical English removes
 voice on purpose.

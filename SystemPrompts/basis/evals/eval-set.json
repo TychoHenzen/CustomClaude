@@ -25,16 +25,10 @@
       "must_exclude": ["DeepSeek tool-call scaffolding"]
     },
     {
-      "name": "python-web-full-claude liedetector-on (layer toggle strips no-emoji)",
-      "config": {"language": "python", "domain": "web", "strictness": "full", "backend": "claude", "layers": {"liedetector": true}},
-      "must_contain": ["pytest"],
-      "must_exclude": ["No emoji"]
-    },
-    {
-      "name": "rust-game-full-deepseek all-layers (game component + deepseek + liedetector affirm)",
-      "config": {"language": "rust", "domain": "game", "strictness": "full", "backend": "deepseek", "layers": {"caveman": true, "liedetector": true, "rtk": true, "context-mode": true}},
-      "must_contain": ["## Game Development", "Frame budget", "Determinism", "DeepSeek tool-call scaffolding", "cargo", "🟢"],
-      "must_exclude": ["No emoji", "pytest"]
+      "name": "rust-game-full-deepseek all-layers (game component + deepseek + rtk + context-mode)",
+      "config": {"language": "rust", "domain": "game", "strictness": "full", "backend": "deepseek", "layers": {"rtk": true, "context-mode": true}},
+      "must_contain": ["## Game Development", "Frame budget", "Determinism", "DeepSeek tool-call scaffolding", "cargo", "No emoji"],
+      "must_exclude": ["pytest"]
     }
   ]
 }

@@ -470,8 +470,6 @@ const REPO_PROSE_FILES = [
   join(REPO_ROOT, 'README.md'),
   join(REPO_ROOT, 'enforcement', 'claude', 'ste', 'README.md'),
   join(REPO_ROOT, 'enforcement', 'INSTALL-PROMPT.md'),
-  join(REPO_ROOT, 'enforcement', 'claude', 'CLAUDE-section.md'),
-  join(REPO_ROOT, 'enforcement', 'claude', 'CLAUDE-code-section.md'),
 ].filter(existsSync);
 
 test('real table: this repository\'s own prose produces no readability violation', { skip: !existsSync(REAL_TABLE_PATH) || REPO_PROSE_FILES.length === 0 }, () => {
