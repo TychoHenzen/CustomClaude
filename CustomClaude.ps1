@@ -994,6 +994,26 @@ function Sync-TweakccPresets {
     Write-Host "  Presets synced to $Version." -ForegroundColor Green
 }
 
+# A tweakcc override file with no body past its header comment does not mean
+# "no instruction" - tweakcc still writes it in, so it silences whatever the
+# stock binary shipped for that prompt id instead of leaving it alone. Drop
+# any such file: an override that isn't there falls back to the stock prompt,
+# which is the file's only sane content-free behavior.
+function Remove-BlankPromptOverrides {
+    param([string]$Dir)
+
+    $stripped = 0
+    Get-ChildItem $Dir -Filter "*.md" -ErrorAction SilentlyContinue | ForEach-Object {
+        $raw = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+        $body = if ($raw) { $raw -replace '(?s)^\s*<!--.*?-->\s*', '' } else { "" }
+        if ([string]::IsNullOrWhiteSpace($body)) {
+            Remove-Item $_.FullName -Force
+            $stripped++
+        }
+    }
+    return $stripped
+}
+
 function Apply-TweakccPreset {
     param([string]$Preset)
 
@@ -1006,9 +1026,14 @@ function Apply-TweakccPreset {
     if ($Preset -eq "stock") { return }
 
     $src = "$PresetsDir\$Preset"
+    $stripped = 0
     foreach ($subdir in @("system-prompts", "system-reminders")) {
         Get-ChildItem "$src\$subdir" -Filter "*.md" -ErrorAction SilentlyContinue |
             Copy-Item -Destination "$TweakccDir\$subdir\" -Force
+        $stripped += Remove-BlankPromptOverrides -Dir "$TweakccDir\$subdir"
+    }
+    if ($stripped -gt 0) {
+        Write-Host "  Dropped $stripped blank prompt override(s), falling back to stock for those." -ForegroundColor DarkGray
     }
 }
 
@@ -1071,8 +1096,20 @@ if (-not $forceApply -and $lastAppliedPreset -and
     Kill-ClaudeProcs
 
     Write-Host "  Applying tweakcc ($chosenPreset)..." -NoNewline -ForegroundColor DarkGray
-    $applyOutput = & npx -y tweakcc-fixed@latest --apply 2>&1
-    if ($LASTEXITCODE -eq 0) {
+    # A redirected native stderr line becomes a terminating error under
+    # $ErrorActionPreference = "Stop" (see Invoke-Git above). Relax it for
+    # this one call so a stderr line from node is reported, not fatal.
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $applyOutput = & npx -y tweakcc-fixed@latest --apply 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" }
+        }
+        $applyExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousEap
+    }
+    if ($applyExit -eq 0) {
         Write-Host " done" -ForegroundColor Green
         "$chosenPreset@$currentVer" | Out-File -FilePath $lastAppliedPresetFile -NoNewline
     } else {
