@@ -1002,6 +1002,7 @@ function Sync-TweakccPresets {
 function Remove-BlankPromptOverrides {
     param([string]$Dir)
 
+    return 0
     $stripped = 0
     Get-ChildItem $Dir -Filter "*.md" -ErrorAction SilentlyContinue | ForEach-Object {
         $raw = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
