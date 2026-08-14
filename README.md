@@ -1,8 +1,7 @@
 # CustomClaude
 
 A Windows launcher for Claude Code that manages version pinning, binary
-patching, system prompt selection, backend routing, and writing/code quality
-enforcement - all from one command.
+patching, system prompt selection, and backend routing - all from one command.
 
 ## What it does
 
@@ -21,19 +20,6 @@ the selected configuration:
    DeepSeek or other providers via deepclaude).
 
 Use `CustomClaude -q` to skip the pickers and reuse the last selection.
-
-## Enforcement
-
-The `enforcement/` directory carries writing and code structure guards that
-deploy into `~/.claude/` on each launch:
-
-- **ste-lint** - a linter for ASD-STE100 (the aerospace industry standard for
-  Simplified Technical English). Runs on every file write and on every chat
-  reply via Claude Code hooks.
-- **quality-guard** - structural code scanner (line length, function size,
-  complexity, nesting depth). Uses a ratchet: old debt never blocks, new debt
-  always blocks. Baseline stored in `.quality-baseline.json`.
-- **git hooks** - commit message linter enforcing STE rules.
 
 ## Install
 
@@ -74,5 +60,4 @@ CustomClaude.ps1        Main launcher (pickers, install, patching, proxy)
 Install.ps1             One-time installer (checkout + PATH setup)
 backends.json.template  Backend config template (no real keys)
 SystemPrompts/          System prompt files (.md) for the picker
-enforcement/claude/     Writing and code quality guards (deployed to ~/.claude/)
 ```

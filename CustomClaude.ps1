@@ -16,7 +16,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Update behaviour is pinned in settings.json, not here. See Sync-EnforcementEnv.
+# Update behaviour is pinned in settings.json, not here. See Sync-UpdateEnv.
 
 # -- Paths (resolved ONCE, never recomputed) ----------------------------------
 
@@ -29,7 +29,6 @@ $PresetsDir = Join-Path $RepoDir "tweakcc-presets"
 $PromptsDir = Join-Path $RepoDir "SystemPrompts"
 $BackendsCfg = Join-Path $env:USERPROFILE ".claude\backends.json"
 $ClaudeHome = Join-Path $env:USERPROFILE ".claude"
-$EnforcementSrc = Join-Path $RepoDir "enforcement\claude"
 $ghHeaders = @{'Accept'='application/vnd.github+json'; 'User-Agent'='customclaude'}
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
@@ -119,78 +118,7 @@ function Invoke-GitStep {
     return $false
 }
 
-# -- Writing and code structure enforcement -----------------------------------
-# The checkers live in this repository under enforcement/claude, which mirrors
-# ~/.claude. A launcher run is the only moment we know the checkout is current.
-# The deployed copy is refreshed here, not by a separate install step.
-
-function Copy-EnforcementTrees {
-    $changed = 0
-    foreach ($tree in @("ste", "hooks", "git-hooks", "lib")) {
-        $src = Join-Path $EnforcementSrc $tree
-        if (-not (Test-Path $src)) { continue }
-        foreach ($file in @(Get-ChildItem $src -Recurse -File)) {
-            $rel = $file.FullName.Substring($EnforcementSrc.Length).TrimStart('\')
-            $dst = Join-Path $ClaudeHome $rel
-            $dstDir = Split-Path $dst -Parent
-            if (-not (Test-Path $dstDir)) {
-                New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
-            }
-            if (Test-Path $dst) {
-                $srcHash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash
-                $dstHash = (Get-FileHash $dst -Algorithm SHA256).Hash
-                if ($srcHash -eq $dstHash) { continue }
-            }
-            Copy-Item $file.FullName $dst -Force
-            Write-Host "  Enforcement: updated $rel" -ForegroundColor DarkGray
-            $changed++
-        }
-    }
-    return $changed
-}
-
-# The readability scorer needs a word frequency table. This fetches it after
-# the tree copy above, so the deployed script under $ClaudeHome is current
-# before it runs. The fetcher script decides on its own whether its table is
-# current. It never exits non-zero, so a failed or missing download here
-# can never stop the launch.
-function Sync-WordFreqTable {
-    $node = (Get-Command node -ErrorAction SilentlyContinue)
-    if (-not $node) { return 0 }
-    $script = Join-Path $ClaudeHome "ste\build-word-freq.mjs"
-    if (-not (Test-Path $script)) { return 0 }
-
-    $output = & $node.Source $script 2>&1
-    if ($output -match 'wrote word-freq table') {
-        Write-Host "  Enforcement: word-freq table updated." -ForegroundColor Green
-        return 1
-    }
-    if ($output -match 'warning:') {
-        Write-Host "  WARN: word-freq table fetch skipped." -ForegroundColor Yellow
-    }
-    return 0
-}
-
-# The writing rules themselves now ship as the Natural output style, from the
-# natural-output-style plugin. So this install copies the checker and wires its
-# hooks, and it writes no rule text into CLAUDE.md at all.
-function New-EnforcementHookEntry {
-    param([string]$Matcher, [string]$Script, [int]$TimeoutSec)
-
-    $node = (Get-Command node -ErrorAction SilentlyContinue)
-    $nodeCmd = if ($node) { "`"$($node.Source)`"" } else { "node" }
-    $target = (Join-Path $ClaudeHome $Script) -replace '\\', '/'
-    $hook = [pscustomobject]@{
-        type    = "command"
-        command = "$nodeCmd `"$target`""
-        timeout = $TimeoutSec
-    }
-    if ($Matcher) {
-        return [pscustomobject]@{ matcher = $Matcher; hooks = @($hook) }
-    }
-    return [pscustomobject]@{ hooks = @($hook) }
-}
-
+# -- Update control -----------------------------------------------------------
 # Two names decide how Claude Code updates itself, and they belong in
 # settings.json rather than in this process. Claude Code copies that "env" block
 # into its own environment, so the setting reaches every launch, including the
@@ -202,20 +130,17 @@ function New-EnforcementHookEntry {
 #
 # FORCE_AUTOUPDATE_PLUGINS reverses that second effect. Only the plugin path
 # reads it, so the exe stays pinned while marketplaces refresh on startup.
-#
-# This script used to set CLAUDE_CODE_SKIP_AUTO_UPDATE on itself. No build reads
-# that name, so it pinned nothing and it hid which file held the real answer.
-function Sync-EnforcementEnv {
+function Sync-UpdateEnv {
     $settingsPath = Join-Path $ClaudeHome "settings.json"
     if (-not (Test-Path $settingsPath)) {
         Write-Host "  WARN: no $settingsPath, update flags not set." -ForegroundColor Yellow
-        return 0
+        return
     }
     try {
         $json = (Get-Content $settingsPath -Raw) | ConvertFrom-Json
     } catch {
         Write-Host "  WARN: settings.json does not parse, update flags not set." -ForegroundColor Yellow
-        return 0
+        return
     }
     if (-not $json.env) {
         $json | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) -Force
@@ -226,89 +151,92 @@ function Sync-EnforcementEnv {
     foreach ($name in $wanted.Keys) {
         if ("$($json.env.$name)" -eq $wanted[$name]) { continue }
         $json.env | Add-Member -NotePropertyName $name -NotePropertyValue $wanted[$name] -Force
-        Write-Host "  Enforcement: set $name=$($wanted[$name]) in settings.json" -ForegroundColor Green
+        Write-Host "  Update control: set $name=$($wanted[$name])" -ForegroundColor Green
         $added++
     }
-    if ($added -eq 0) { return 0 }
+    if ($added -eq 0) { return }
 
     Copy-Item $settingsPath "$settingsPath.bak" -Force
     [System.IO.File]::WriteAllText($settingsPath, ($json | ConvertTo-Json -Depth 30), $Utf8NoBom)
-    return $added
 }
 
-# We match on the script file name, not on the whole command. A hand-edited node
-# path or wrapper then stays in place, and no second copy of the hook appears.
-function Sync-EnforcementHooks {
-    $settingsPath = Join-Path $ClaudeHome "settings.json"
-    if (-not (Test-Path $settingsPath)) {
-        Write-Host "  WARN: no $settingsPath, hooks not registered." -ForegroundColor Yellow
-        return 0
-    }
-    $raw = Get-Content $settingsPath -Raw
-    try {
-        $json = $raw | ConvertFrom-Json
-    } catch {
-        Write-Host "  WARN: settings.json does not parse, hooks not registered." -ForegroundColor Yellow
-        return 0
-    }
-    if (-not $json.hooks) {
-        $json | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) -Force
-    }
+# -- Enforcement removal -------------------------------------------------------
+# The enforcement system used to copy ste/, hooks/ste-*, git-hooks/, and lib/
+# into ~/.claude/ and register hooks in settings.json. It is gone. Every step
+# is guarded by Test-Path, so the function is idempotent and safe to call on
+# every launch. Once every machine has run it, delete this function.
+function Remove-Enforcement {
+    $changed = 0
 
-    $wanted = @(
-        @{ Event = "PostToolUse"; Matcher = "Write|Edit|MultiEdit|NotebookEdit"; Script = "hooks/ste-write-guard.mjs";  Timeout = 15 },
-        @{ Event = "Stop";        Matcher = "";                                  Script = "hooks/ste-turn-guard.mjs";   Timeout = 20 },
-        @{ Event = "Stop";        Matcher = "";                                  Script = "hooks/ste-reply-guard.mjs";  Timeout = 10 },
-        @{ Event = "PreToolUse";  Matcher = "Bash";                              Script = "hooks/ste-commit-gate.mjs";  Timeout = 10 }
-    )
-    $added = 0
-    foreach ($spec in $wanted) {
-        $leaf = Split-Path $spec.Script -Leaf
-        if ($raw -match [regex]::Escape($leaf)) { continue }
-        $event = $spec.Event
-        $existing = @()
-        if ($json.hooks.PSObject.Properties.Name -contains $event) {
-            $existing = @($json.hooks.$event)
+    foreach ($dir in @("ste", "git-hooks", "lib")) {
+        $target = Join-Path $ClaudeHome $dir
+        if (Test-Path $target) {
+            try { [System.IO.Directory]::Delete($target, $true) }
+            catch { Write-Host "    WARN: could not delete $dir/: $_" -ForegroundColor Yellow; continue }
+            Write-Host "    Deleted $dir/" -ForegroundColor DarkGray
+            $changed++
         }
-        $entry = New-EnforcementHookEntry -Matcher $spec.Matcher -Script $spec.Script -TimeoutSec $spec.Timeout
-        $json.hooks | Add-Member -NotePropertyName $event -NotePropertyValue ($existing + $entry) -Force
-        Write-Host "  Enforcement: registered $leaf on $event" -ForegroundColor Green
-        $added++
     }
-    if ($added -eq 0) { return 0 }
 
-    Copy-Item $settingsPath "$settingsPath.bak" -Force
-    [System.IO.File]::WriteAllText($settingsPath, ($json | ConvertTo-Json -Depth 30), $Utf8NoBom)
-    return $added
-}
+    $hooksDir = Join-Path $ClaudeHome "hooks"
+    if (Test-Path $hooksDir) {
+        foreach ($file in @(Get-ChildItem $hooksDir -Filter "ste-*" -File -ErrorAction SilentlyContinue)) {
+            Remove-StateFile $file.FullName
+            Write-Host "    Deleted hooks/$($file.Name)" -ForegroundColor DarkGray
+            $changed++
+        }
+    }
 
-function Sync-EnforcementGitHooks {
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return 0 }
-    $want = (Join-Path $ClaudeHome "git-hooks") -replace '\\', '/'
-    $current = "$(& git config --global core.hooksPath 2>$null)".Trim()
-    if (-not $current) {
-        & git config --global core.hooksPath $want
-        Write-Host "  Enforcement: set core.hooksPath to $want" -ForegroundColor Green
-        return 1
-    }
-    if (($current -replace '\\', '/').TrimEnd('/') -ne $want.TrimEnd('/')) {
-        Write-Host "  NOTE: core.hooksPath is $current, not $want." -ForegroundColor Yellow
-        Write-Host "        The commit message check does not run. Left as is." -ForegroundColor DarkGray
-    }
-    return 0
-}
+    $settingsPath = Join-Path $ClaudeHome "settings.json"
+    if (Test-Path $settingsPath) {
+        try {
+            $raw = Get-Content $settingsPath -Raw
+            $json = $raw | ConvertFrom-Json
+        } catch { $json = $null }
 
-function Sync-Enforcement {
-    if (-not (Test-Path $EnforcementSrc)) {
-        Write-Host "  WARN: $EnforcementSrc missing, enforcement not synced." -ForegroundColor Yellow
-        return
+        if ($json -and $json.hooks) {
+            $dirty = $false
+            foreach ($event in @($json.hooks.PSObject.Properties.Name)) {
+                $entries = @($json.hooks.$event)
+                $kept = @($entries | Where-Object {
+                    $dominated = $false
+                    foreach ($h in @($_.hooks)) {
+                        if ($h.command -and $h.command -match 'ste-[a-z]+-guard\.mjs|ste-commit-gate\.mjs') {
+                            $dominated = $true
+                        }
+                    }
+                    -not $dominated
+                })
+                if ($kept.Count -ne $entries.Count) {
+                    if ($kept.Count -eq 0) {
+                        $json.hooks.PSObject.Properties.Remove($event)
+                    } else {
+                        $json.hooks | Add-Member -NotePropertyName $event -NotePropertyValue $kept -Force
+                    }
+                    $dirty = $true
+                }
+            }
+            if ($dirty) {
+                Copy-Item $settingsPath "$settingsPath.bak" -Force
+                [System.IO.File]::WriteAllText($settingsPath, ($json | ConvertTo-Json -Depth 30), $Utf8NoBom)
+                Write-Host "    Removed enforcement hooks from settings.json" -ForegroundColor DarkGray
+                $changed++
+            }
+        }
     }
-    $changed = (Copy-EnforcementTrees)
-    $changed += (Sync-EnforcementEnv) + (Sync-EnforcementHooks) + (Sync-EnforcementGitHooks) + (Sync-WordFreqTable)
-    if ($changed -eq 0) {
-        Write-Host "  Enforcement: up to date." -ForegroundColor DarkGray
-    } else {
-        Write-Host "  Enforcement: $changed change(s) applied." -ForegroundColor Green
+
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        $hooksPath = "$(& git config --global core.hooksPath 2>$null)".Trim()
+        $claudeGitHooks = (Join-Path $ClaudeHome "git-hooks") -replace '\\', '/'
+        if ($hooksPath -and (($hooksPath -replace '\\', '/').TrimEnd('/') -eq $claudeGitHooks.TrimEnd('/'))) {
+            & git config --global --unset core.hooksPath
+            Write-Host "    Unset core.hooksPath" -ForegroundColor DarkGray
+            $changed++
+        }
+    }
+
+    if ($changed -gt 0) {
+        Write-Host "  Enforcement: removed $changed artifact(s)." -ForegroundColor Green
     }
 }
 
@@ -525,6 +453,8 @@ function Assert-NativeClaudeInstall {
 
 if ($q) {
     Assert-NativeClaudeInstall -Quiet
+    Remove-Enforcement
+    Sync-UpdateEnv
     $backendCfg = Load-BackendConfig
     $backendKeys = @($backendCfg.backends.PSObject.Properties.Name)
     $lastBackendFile = Join-Path $env:TEMP "customclaude-last-backend.txt"
@@ -577,7 +507,8 @@ if ($q) {
 # -- Determine current version ------------------------------------------------
 
 Assert-NativeClaudeInstall
-Sync-Enforcement
+Remove-Enforcement
+Sync-UpdateEnv
 
 $currentVer = Get-ClaudeVersion
 Write-Host "  CC binary: $ClaudeExe" -ForegroundColor DarkGray

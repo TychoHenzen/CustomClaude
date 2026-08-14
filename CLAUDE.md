@@ -23,27 +23,14 @@ file by byte offset after every line, so a launch that changes this file resumes
 at a garbage position. Keep the shim short and stable. Put new logic in
 `CustomClaude.ps1`, which the shim reads fresh after the reset.
 
-## Never edit ~/.claude directly
+## Enforcement is gone
 
-`enforcement/claude/` in this repo is the source. `~/.claude/` is its output.
-`Sync-Enforcement` in `CustomClaude.ps1` copies `ste`, `hooks`, `git-hooks` and
-`lib` on every launch. So a fix belongs here, and a launch deploys it.
-
-A file written straight into `~/.claude` is invisible to this repo. It survives
-every launch, because the copy only adds and overwrites. It never reaches
-another machine, and the test suite here never sees it.
-
-That already happened. Three modules sat in `~/.claude/ste` alone for days.
-Five of their tests failed against the install and passed nowhere else, because
-the module they gated was never wired into `ste-lint.mjs`.
-
-Copying a file into `~/.claude` by hand is fine once the repo holds it. That is
-the launcher's job done early, not a place to work.
-
-This tree carries the checker, not the rules it checks. The writing rules ship
-as the Natural output style, from the `natural-output-style` plugin in the
-dod-guard marketplace. Only one output style loads at a time, so a machine left
-on `Explanatory` gets the hooks with none of the rules behind them.
+The old enforcement system (STE linter, commit gates, write/turn/reply guards)
+has been removed. `Remove-Enforcement` in `CustomClaude.ps1` actively cleans up
+any artifacts a prior launch left in `~/.claude/` (ste/, hooks/ste-*, git-hooks/,
+lib/, hook entries in settings.json, core.hooksPath). It is idempotent and runs
+on every launch. Once every machine has launched at least once after this change,
+delete `Remove-Enforcement` and its call sites.
 
 ## The system prompt basis has no generator in this repo
 
